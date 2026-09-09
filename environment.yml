@@ -1,0 +1,10 @@
+name: hair_database
+channels:
+  - defaults
+dependencies:
+  - python=3.12
+  - console_shortcut
+  - pandas
+  - openpyxl
+  - sqlalchemy
+prefix: C:\Users\Administrator\anaconda3\envs\hair_database
