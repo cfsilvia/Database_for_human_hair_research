@@ -28,3 +28,19 @@ def read_excel_file(file_path: str | Path, sheet_name: str | int = 0,) -> tuple[
     }
 
     return df, metadata
+
+"""
+    Load an Excel file and return it as a pandas DataFrame
+"""
+def get_excel_file(file_path: str) -> pd.DataFrame:
+    path = Path(file_path)
+
+    if not path.exists():
+        raise FileNotFoundError(f"File not found: {path}")
+
+    if path.suffix.lower() not in {".xlsx", ".xls"}:
+        raise ValueError("File must be an Excel file (.xlsx or .xls)")
+
+    df = pd.read_excel(path)
+
+    return df
