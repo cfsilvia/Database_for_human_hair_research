@@ -1,0 +1,41 @@
+alembic==1.20.0
+annotated-doc==0.0.5
+annotated-types==0.8.0
+anyio==4.15.1
+click==8.5.0
+colorama==0.4.6
+et_xmlfile @ file:///C:/b/abs_b0ifp_j3js/croot/et_xmlfile_1756462499666/work
+fastapi==0.141.1
+greenlet @ file:///C:/Users/task_177494940766419/croot/greenlet_1774949582240/work
+h11==0.16.0
+idna==3.19
+iniconfig==2.3.0
+Mako==1.4.1
+MarkupSafe==3.0.3
+mkl-service==2.7.2
+mkl_fft @ file:///C:/Users/task_177730051549119/croot/mkl_fft_1777300588604/work
+mkl_random @ file:///C:/Users/task_178236954984006/croot/mkl_random_1782369657583/work
+numpy @ file:///C:/Users/task_178764972633979/croot/numpy_and_numpy_base_1787649988694/work/dist/numpy-2.5.2-cp312-cp312-win_amd64.whl#sha256=8ae8e334690e918e975eda060a8ea5db77e891416d72ad5a8eaa08417ddf321f
+openpyxl @ file:///C:/b/abs_6cdczthntz/croot/openpyxl_1736371239628/work
+packaging==26.3
+pandas @ file:///C:/Users/task_XNtQ82uvQdi2V_0/croot/pandas_1785760252112/work
+pluggy==1.6.0
+psycopg==3.3.5
+psycopg-binary==3.3.5
+pydantic==2.13.5
+pydantic-settings==2.15.0
+pydantic_core==2.46.5
+Pygments==2.21.0
+pytest==9.1.1
+python-dateutil @ file:///C:/b/abs_3au_koqnbs/croot/python-dateutil_1716495777160/work
+python-dotenv==1.2.3
+python-multipart==0.0.32
+setuptools==83.0.0
+six @ file:///C:/b/abs_149wuyuo1o/croot/six_1744271521515/work
+SQLAlchemy @ file:///C:/Users/task_O1_owy5STSmW3_0/croot/sqlalchemy_1783083740806/work
+starlette==1.6.0
+typing-inspection==0.4.4
+typing_extensions @ file:///C:/Users/task_fy7J-zTYSKin8_0/croot/typing_extensions_1784101044383/work
+tzdata @ file:///home/task_178834294813729/croot/python-tzdata_1788343367872/work
+uvicorn==0.53.0
+wheel==0.47.0
