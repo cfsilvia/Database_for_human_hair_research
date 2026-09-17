@@ -24,7 +24,7 @@ def upgrade() -> None:
     op.create_table('canonical_questions',
     sa.Column('id', sa.Integer(), nullable=False),
     sa.Column('code', sa.String(length=100), nullable=False),
-    sa.Column('instrument', sa.String(length=100), nullable=False),
+    sa.Column('test_psicolog', sa.String(length=100), nullable=False),
     sa.Column('item_order', sa.Integer(), nullable=True),
     sa.Column('created_at', sa.DateTime(), nullable=False),
     sa.PrimaryKeyConstraint('id'),

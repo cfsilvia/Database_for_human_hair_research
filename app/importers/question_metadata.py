@@ -100,10 +100,11 @@ def make_sheet_name(name, used_names):
 # Output: list of question metadata records from that worksheet.
 def read_questions_from_sheet(ws, file_name):
     header_row = find_header_row(ws)
-    subheader_row = header_row + 1
 
     if header_row is None:
         return []
+
+    subheader_row = header_row + 1
 
     gender_form = get_gender_form(ws.title)
 
@@ -134,6 +135,10 @@ def read_questions_from_sheet(ws, file_name):
         subquestion_number = None
         subquestion_phrase = None
 
+        # Only create a record if this column actually belongs to a question.
+        if header is None and subheader is None:
+            continue
+
         if isinstance(subheader, str):
             subquestion_number, subquestion_phrase = split_question(
                 subheader
@@ -143,20 +148,12 @@ def read_questions_from_sheet(ws, file_name):
             if subquestion_number is None:
                 subquestion_phrase = subheader.strip()
 
-             # Only create a record if this column actually
-             # belongs to a questionnaire question
-            if header is None and subheader is None:
-              continue
-
-
-
-
         records.append(
             {
                 "number question": current_main_question,
                 "question": current_main_phrase,
                 "subquestion number": subquestion_number,
-                "subquestion": subquestion_phrase,
+                "subquestion phrase": subquestion_phrase,
                 "questionnaire":
                     get_questionnaire_type(header_cell),
                 "file name": file_name,
@@ -204,6 +201,9 @@ def build_question_metadata(
     sheets = []
 
     for file_path in data_folder.glob("*.xlsx"):
+        if file_path.name.startswith("~$"):
+            continue
+
         if output_file is not None:
             if file_path.name == Path(output_file).name:
                 continue
