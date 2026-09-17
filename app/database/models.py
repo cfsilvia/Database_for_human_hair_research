@@ -8,6 +8,7 @@ from sqlalchemy import (
     String,
     Text,
     UniqueConstraint,
+    func,
 )
 
 from sqlalchemy.orm import (
@@ -17,8 +18,10 @@ from sqlalchemy.orm import (
     relationship,
 )
 
+
 class Base(DeclarativeBase):
     pass
+
 
 class Questionnaire(Base):
     __tablename__ = "questionnaires"
@@ -40,10 +43,11 @@ class Questionnaire(Base):
     )
 
     created_at: Mapped[datetime] = mapped_column(
-    DateTime(timezone=True),
-    default=lambda: datetime.now(timezone.utc),
-    nullable=False,
-)
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        server_default=func.now(),
+        nullable=False,
+    )
 
 
 class CanonicalQuestion(Base):
@@ -60,7 +64,7 @@ class CanonicalQuestion(Base):
         nullable=False,
     )
 
-    instrument: Mapped[str] = mapped_column(
+    test_psicolog: Mapped[str] = mapped_column(
         String(100),
         nullable=False,
     )
@@ -71,10 +75,11 @@ class CanonicalQuestion(Base):
     )
 
     created_at: Mapped[datetime] = mapped_column(
-        DateTime,
+        DateTime(timezone=True),
         default=lambda: datetime.now(timezone.utc),
+        server_default=func.now(),
         nullable=False,
-    )    
+    )
 
 
 class QuestionVariant(Base):
@@ -102,7 +107,7 @@ class QuestionVariant(Base):
         nullable=False,
     )
 
-    phrase_hebrew: Mapped[str | None] = mapped_column(
+    question: Mapped[str | None] = mapped_column(
         Text,
         nullable=True,
     )
@@ -126,6 +131,17 @@ class QuestionVariant(Base):
         Text,
         nullable=True,
     )
+    
+    pair_status: Mapped[str | None] = mapped_column(
+        String(20),
+        nullable=True,
+    )
+
+    pair_similarity: Mapped[float | None] = mapped_column(
+        Float,
+        nullable=True,
+    )
+    
 
     canonical_question = relationship(
         "CanonicalQuestion"
@@ -138,13 +154,17 @@ class QuestionVariant(Base):
     __table_args__ = (
         UniqueConstraint(
             "questionnaire_id",
+            "file_name",
             "question_number",
             "gender_form",
+            "subquestion_phrase",
             name="uq_question_variant",
         ),
     )
 
-
+# ============================================================
+# PARTICIPANTS
+# ============================================================
 class Participant(Base):
     __tablename__ = "participants"
 
@@ -152,7 +172,8 @@ class Participant(Base):
         Integer,
         primary_key=True,
     )
-
+    
+    # Real participant identification from Excel
     subject_id: Mapped[int] = mapped_column(
         Integer,
         unique=True,
@@ -163,8 +184,9 @@ class Participant(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         default=lambda: datetime.now(timezone.utc),
+        server_default=func.now(),
         nullable=False,
-    )    
+    )
 
 
 class QuestionnaireSession(Base):
@@ -197,7 +219,6 @@ class QuestionnaireSession(Base):
         nullable=True,
     )
 
-    # HERE
     score: Mapped[float | None] = mapped_column(
         Float,
         nullable=True,
