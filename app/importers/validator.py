@@ -69,6 +69,20 @@ def get_header_excel_cell(df: pd.DataFrame, column_name: str) -> tuple[str, int,
     return f"{column_letter}1", 1, column_letter
 
 
+def find_subject_id_column(
+    df: pd.DataFrame,
+    subject_id_column: str = "subject ID",
+) -> str | None:
+    if subject_id_column in df.columns:
+        return subject_id_column
+
+    for column_name in ("subject ID", "Subject ID"):
+        if column_name in df.columns:
+            return column_name
+
+    return None
+
+
 # Input: validation name, message, Excel location details, column/value details, and optional filename.
 # Output: dictionary describing one validation problem.
 def make_problem(
@@ -155,9 +169,9 @@ def validate_subject_id_numeric(
     df: pd.DataFrame,
     subject_id_column: str = "subject ID",
 ) -> None:
-   
-    if subject_id_column not in df.columns:
-        raise ValidationError(f"Column '{subject_id_column}' was not found.")
+    subject_id_column = find_subject_id_column(df, subject_id_column)
+    if subject_id_column is None:
+        raise ValidationError("Column 'subject ID' was not found.")
 
     converted = pd.to_numeric(df[subject_id_column], errors="coerce")
     invalid_mask = df[subject_id_column].notna() & converted.isna()
@@ -187,9 +201,9 @@ def validate_subject_id_matches_q1(
     df: pd.DataFrame,
     subject_id_column: str = "subject ID",
 ) -> None:
-    
-    if subject_id_column not in df.columns:
-        raise ValidationError(f"Column '{subject_id_column}' was not found.")
+    subject_id_column = find_subject_id_column(df, subject_id_column)
+    if subject_id_column is None:
+        raise ValidationError("Column 'subject ID' was not found.")
 
     q1_column = find_question_column(df, "Q1")
     if q1_column is None:
@@ -272,16 +286,16 @@ def find_validation_problems(
                 )
             )
 
-    subject_id_column = "subject ID"
-    if subject_id_column not in df.columns:
+    subject_id_column = find_subject_id_column(df)
+    if subject_id_column is None:
         problems.append(
             make_problem(
                 "validate_subject_id_numeric",
-                f"Column '{subject_id_column}' was not found.",
+                "Column 'subject ID' was not found.",
                 None,
                 None,
                 None,
-                subject_id_column,
+                "subject ID",
                 None,
                 filename,
             )
@@ -342,7 +356,7 @@ def find_validation_problems(
                 )
             )
 
-    if subject_id_column in df.columns and q1_column is not None:
+    if subject_id_column is not None and q1_column is not None:
         subject_id = pd.to_numeric(data_df[subject_id_column], errors="coerce")
         q1 = pd.to_numeric(data_df[q1_column], errors="coerce")
         mismatch = subject_id.notna() & q1.notna() & (subject_id != q1)

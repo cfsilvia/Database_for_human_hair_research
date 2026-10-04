@@ -81,6 +81,22 @@ class ValidateImportReportTests(unittest.TestCase):
         self.assertEqual(report_df["excel_cell"].tolist(), ["A4", "B4"])
         self.assertEqual(report_df["excel_row"].tolist(), [4, 4])
 
+    def test_accepts_capitalized_subject_id_column(self) -> None:
+        df = pd.DataFrame(
+            [
+                [None, None],
+                [None, None],
+                [123, 123],
+            ],
+            columns=["Subject ID", "Q1. patient id"],
+        )
+
+        results = validate_import(df, output_path=None)
+
+        self.assertTrue(results["validate_subject_id_numeric"]["valid"])
+        self.assertTrue(results["validate_subject_id_matches_q1"]["valid"])
+        self.assertTrue(results["validation_report"]["valid"])
+
 
 if __name__ == "__main__":
     unittest.main()

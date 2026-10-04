@@ -1,38 +1,52 @@
 import pandas as pd
 
 
-
-
-"""
-    Correct Subject ID values using column L of the correction file.
-
-    Only non-empty values in column L are used.
-    Empty values leave the original Subject ID unchanged.
-
-    Returns
-    -------
-    corrected_df : pd.DataFrame
-    n_corrected : int
-"""
 def correct_subject_ids(
     questionnaire_df: pd.DataFrame,
     correction_df: pd.DataFrame,
-    subject_id_column: str = "subject ID",
-    correction_column_index: int = 11,   # Excel column L
-) -> pd.DataFrame:
-
-    if len(questionnaire_df) != len(correction_df):
-        raise ValueError("Questionnaire file and correction file "
-                      "do not have the same number of rows."
-        )
-
+    subject_id_column: str = "subject id",
+    started_column: str = "started",
+    ended_column: str = "ended",
+    corrected_id_column_index: int = 11,   # Excel column L
+):
     df = questionnaire_df.copy()
-    corrected_ids = correction_df.iloc[:, correction_column_index]
+    corr = correction_df.copy()
 
-    has_correction = corrected_ids.notna()
-    n_corrected = int(has_correction.sum())
+    corrected_col = corr.columns[corrected_id_column_index]
+    
+    
+     # ----------------------------------
+    # Make Subject IDs numeric
+    # ----------------------------------
 
-    df.loc[has_correction, subject_id_column,] = corrected_ids.loc[has_correction].values
+    df[subject_id_column] = pd.to_numeric(df[subject_id_column], errors="coerce",).astype("Int64")
 
-    return df, n_corrected
-     
+    corr[corrected_col] = pd.to_numeric(corr[corrected_col], errors="coerce",).astype("Int64")
+
+
+    # Keep only rows that actually contain a corrected Subject ID
+    corr = corr[corr[corrected_col].notna()].copy()
+
+    # Create a lookup using started + ended
+    correction_lookup = corr.set_index(
+        [started_column, ended_column]
+    )[corrected_col]
+
+    # Build the same key in the questionnaire
+    questionnaire_keys = pd.MultiIndex.from_frame(
+        df[[started_column, ended_column]]
+    )
+
+    # Find rows that appear in the correction file
+
+    mask = questionnaire_keys.isin(
+        correction_lookup.index
+    )
+
+    # Replace only those Subject IDs
+    df.loc[mask, subject_id_column] = [
+        correction_lookup.loc[key]
+        for key in questionnaire_keys[mask]
+    ]
+
+    return df, int(mask.sum())

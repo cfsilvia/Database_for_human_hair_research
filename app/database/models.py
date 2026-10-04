@@ -42,12 +42,7 @@ class Questionnaire(Base):
         nullable=False,
     )
 
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
-        default=lambda: datetime.now(timezone.utc),
-        server_default=func.now(),
-        nullable=False,
-    )
+    
 
 
 class CanonicalQuestion(Base):
@@ -57,10 +52,16 @@ class CanonicalQuestion(Base):
         Integer,
         primary_key=True,
     )
+    
+    questionnaire_id: Mapped[int] = mapped_column(
+    ForeignKey("questionnaires.id"),
+    nullable=False,
+    index=True,
+    )
+    
 
     code: Mapped[str] = mapped_column(
         String(100),
-        unique=True,
         nullable=False,
     )
 
@@ -74,11 +75,19 @@ class CanonicalQuestion(Base):
         nullable=True,
     )
 
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
-        default=lambda: datetime.now(timezone.utc),
-        server_default=func.now(),
-        nullable=False,
+    
+    
+    questionnaire = relationship(
+        "Questionnaire"
+    )
+    
+    __table_args__ = (
+        UniqueConstraint(
+            "questionnaire_id",
+            "test_psicolog",
+            "item_order",
+            name="uq_canonical_question",
+        ),
     )
 
 
@@ -101,7 +110,9 @@ class QuestionVariant(Base):
         nullable=False,
         index=True,
     )
-
+    
+    # Actual answerable question:
+    # Q12.1, Q12.2, Q13, etc.
     question_number: Mapped[str] = mapped_column(
         String(30),
         nullable=False,
@@ -121,13 +132,12 @@ class QuestionVariant(Base):
         String(255),
         nullable=True,
     )
-
-    subquestion_number: Mapped[str | None] = mapped_column(
+    parent_question_number: Mapped[str | None] = mapped_column(
         String(30),
         nullable=True,
     )
 
-    subquestion_phrase: Mapped[str | None] = mapped_column(
+    parent_question: Mapped[str | None] = mapped_column(
         Text,
         nullable=True,
     )
@@ -157,7 +167,6 @@ class QuestionVariant(Base):
             "file_name",
             "question_number",
             "gender_form",
-            "subquestion_phrase",
             name="uq_question_variant",
         ),
     )
@@ -181,12 +190,7 @@ class Participant(Base):
         index=True,
     )
 
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
-        default=lambda: datetime.now(timezone.utc),
-        server_default=func.now(),
-        nullable=False,
-    )
+   
 
 
 class QuestionnaireSession(Base):
@@ -267,4 +271,5 @@ class Response(Base):
             "question_variant_id",
             name="uq_session_question",
         ),
+        
     )
