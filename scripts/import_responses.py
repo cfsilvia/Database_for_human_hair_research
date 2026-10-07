@@ -19,7 +19,7 @@ def run():
         PROJECT_ROOT
          / "data"
         / "incoming"
-        / "שאלון 1 מספרי 20.9.xlsx",
+        / "שאלון 2 מספרי 20.9.xlsx",
         
     )
     
@@ -29,10 +29,10 @@ def run():
         PROJECT_ROOT
         / "data"
         / "incoming"
-        / "First_Questionnarie_Correction.xlsx"
+        / "Second_Questionnarie_Correction.xlsx"
     )
     
-    code_questionnarie ="first-questionnaire"
+    code_questionnarie ="second-questionnaire"
     
     correction_df.columns = (
         correction_df.columns

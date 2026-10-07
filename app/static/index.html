@@ -1,0 +1,390 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+
+    <meta
+        name="viewport"
+        content="width=device-width, initial-scale=1.0"
+    >
+
+    <title>Hair Research Database</title>
+
+    <link
+        rel="stylesheet"
+        href="/static/css/style.css"
+    >
+</head>
+
+<body>
+
+    <!-- ========================================= -->
+    <!-- TOP NAVIGATION -->
+    <!-- ========================================= -->
+
+    <header class="topbar">
+
+        <div class="brand">
+            Hair Research Database
+        </div>
+
+        <nav class="navigation">
+
+            <a
+                href="/"
+                class="nav-link active"
+            >
+                Home
+            </a>
+
+            <a
+                href="#"
+                class="nav-link"
+            >
+                Participants
+            </a>
+
+            <a
+                href="#"
+                class="nav-link"
+            >
+                Import / Update
+            </a>
+
+            <a
+                href="#"
+                class="nav-link"
+            >
+                Export
+            </a>
+
+            <a
+                href="#"
+                class="nav-link"
+            >
+                Analysis
+            </a>
+
+        </nav>
+
+    </header>
+
+
+    <!-- ========================================= -->
+    <!-- MAIN PAGE -->
+    <!-- ========================================= -->
+
+    <main class="page-container">
+
+
+        <!-- ===================================== -->
+        <!-- PAGE TITLE -->
+        <!-- ===================================== -->
+
+        <section class="hero">
+
+            <h1>
+                Hair Research Database
+            </h1>
+
+            <p>
+                Participant questionnaire data,
+                responses and research analysis
+            </p>
+
+        </section>
+
+
+        <!-- ===================================== -->
+        <!-- PARTICIPANT SEARCH -->
+        <!-- ===================================== -->
+
+        <section class="card">
+
+            <h2>
+                Search Participant
+            </h2>
+
+            <p>
+                Enter a Subject ID to view participant data.
+            </p>
+
+            <div class="search-row">
+
+                <input
+                    id="subjectId"
+                    type="number"
+                    placeholder="Enter Subject ID"
+                >
+
+                <button
+                    id="searchButton"
+                    class="primary-button"
+                >
+                    Search
+                </button>
+
+            </div>
+
+            <div id="searchMessage"></div>
+
+        </section>
+
+
+        <!-- ===================================== -->
+        <!-- PARTICIPANT SUMMARY -->
+        <!-- ===================================== -->
+
+        <section
+            id="participantSection"
+            class="card hidden"
+        >
+
+            <div class="section-header">
+
+                <div>
+
+                    <h2>
+                        Participant
+                    </h2>
+
+                    <p>
+                        Subject ID:
+                        <strong
+                            id="participantSubjectId"
+                        >
+                        </strong>
+                    </p>
+
+                </div>
+
+                <button
+                    id="responsesButton"
+                    class="secondary-button"
+                >
+                    View Responses
+                </button>
+
+            </div>
+
+
+            <div class="status-grid">
+
+                <div class="status-box">
+
+                    <span class="status-title">
+                        First Questionnaire
+                    </span>
+
+                    <span
+                        id="firstQuestionnaireStatus"
+                        class="status-value"
+                    >
+                        —
+                    </span>
+
+                </div>
+
+
+                <div class="status-box">
+
+                    <span class="status-title">
+                        Second Questionnaire
+                    </span>
+
+                    <span
+                        id="secondQuestionnaireStatus"
+                        class="status-value"
+                    >
+                        —
+                    </span>
+
+                </div>
+
+            </div>
+
+        </section>
+
+
+        <!-- ===================================== -->
+        <!-- RESPONSES -->
+        <!-- ===================================== -->
+
+        <section
+            id="responsesSection"
+            class="card hidden"
+        >
+
+            <h2>
+                Participant Responses
+            </h2>
+
+            <div class="table-wrapper">
+
+                <table>
+
+                    <thead>
+
+                        <tr>
+                            <th>Questionnaire</th>
+                            <th>Test</th>
+                            <th>Gender</th>
+                            <th>Question</th>
+                            <th>Parent Q</th>
+                            <th>Question Text</th>
+                            <th>Numeric Answer</th>
+                            <th>Text Answer</th>
+                        </tr>
+
+                    </thead>
+
+                    <tbody id="responsesTableBody">
+                    </tbody>
+
+                </table>
+
+            </div>
+
+        </section>
+
+
+        <!-- ===================================== -->
+        <!-- DATABASE SUMMARY -->
+        <!-- ===================================== -->
+
+        <section class="summary-section">
+
+            <h2>
+                Database Summary
+            </h2>
+
+            <div class="summary-grid">
+
+                <div class="summary-card">
+                    <div
+                        id="participantsCount"
+                        class="summary-number"
+                    >
+                        —
+                    </div>
+            
+                    <div class="summary-label">
+                        Participants
+                    </div>
+                </div>
+            
+            
+                <div class="summary-card">
+                    <div
+                        id="malesCount"
+                        class="summary-number"
+                    >
+                        —
+                    </div>
+            
+                    <div class="summary-label">
+                        Males
+                    </div>
+                </div>
+            
+            
+                <div class="summary-card">
+                    <div
+                        id="femalesCount"
+                        class="summary-number"
+                    >
+                        —
+                    </div>
+            
+                    <div class="summary-label">
+                        Females
+                    </div>
+                </div>
+            
+            </div>
+
+        </section>
+
+
+        <!-- ===================================== -->
+        <!-- QUICK ACTIONS -->
+        <!-- ===================================== -->
+
+        <section>
+
+            <h2>
+                Quick Actions
+            </h2>
+
+            <div class="actions-grid">
+
+                <button class="action-card">
+
+                    <span class="action-title">
+                        Participants
+                    </span>
+
+                    <span class="action-description">
+                        Browse participant records
+                    </span>
+
+                </button>
+
+
+                <button class="action-card">
+
+                    <span class="action-title">
+                        Import / Update
+                    </span>
+
+                    <span class="action-description">
+                        Import questionnaire and metadata files
+                    </span>
+
+                </button>
+
+
+                <button class="action-card">
+
+                    <span class="action-title">
+                        Export
+                    </span>
+
+                    <span class="action-description">
+                        Export research data to Excel
+                    </span>
+
+                </button>
+
+
+                <button class="action-card">
+
+                    <span class="action-title">
+                        Analysis
+                    </span>
+
+                    <span class="action-description">
+                        View questionnaire scores and results
+                    </span>
+
+                </button>
+
+            </div>
+
+        </section>
+
+    </main>
+
+
+    <!-- ========================================= -->
+    <!-- JAVASCRIPT FILES -->
+    <!-- ========================================= -->
+
+    <script src="/static/js/api.js"></script>
+    <script src="/static/js/participant.js"></script>
+    <script src="/static/js/main.js"></script>
+
+</body>
+
+</html>

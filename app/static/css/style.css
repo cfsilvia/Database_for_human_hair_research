@@ -1,0 +1,317 @@
+/* =========================================================
+   1. GENERAL PAGE
+   ========================================================= */
+
+   * {
+    box-sizing: border-box;
+}
+
+body {
+    margin: 0;
+
+    font-family:
+        Arial,
+        Helvetica,
+        sans-serif;
+
+    background-color: #f4f6f8;
+    color: #24313d;
+}
+
+
+/* =========================================================
+   2. TOP NAVIGATION
+   ========================================================= */
+
+.topbar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+
+    padding: 18px 40px;
+
+    background-color: white;
+
+    border-bottom: 1px solid #e3e7eb;
+}
+
+
+.brand {
+    font-size: 20px;
+    font-weight: bold;
+}
+
+
+.navigation {
+    display: flex;
+    gap: 28px;
+}
+
+
+.nav-link {
+    color: #53616d;
+    text-decoration: none;
+    font-size: 15px;
+}
+
+
+.nav-link:hover {
+    color: #1f4f66;
+}
+
+
+.nav-link.active {
+    color: #1f4f66;
+    font-weight: bold;
+}
+
+
+/* =========================================================
+   3. MAIN PAGE CONTAINER
+   ========================================================= */
+
+.page-container {
+    max-width: 1100px;
+
+    margin: 0 auto;
+
+    padding: 40px 30px 80px;
+}
+
+
+/* =========================================================
+   4. PAGE TITLE / HERO
+   ========================================================= */
+
+.hero {
+    margin-bottom: 35px;
+}
+
+
+.hero h1 {
+    margin-top: 0;
+    margin-bottom: 8px;
+
+    font-size: 34px;
+}
+
+
+.hero p {
+    margin: 0;
+
+    color: #667581;
+}
+
+
+/* =========================================================
+   5. CARDS
+   ========================================================= */
+
+.card {
+    background-color: white;
+
+    padding: 26px;
+
+    margin-bottom: 30px;
+
+    border: 1px solid #e4e8eb;
+    border-radius: 12px;
+}
+
+
+.card h2 {
+    margin-top: 0;
+}
+
+
+/* =========================================================
+   6. PARTICIPANT SEARCH
+   ========================================================= */
+
+.search-row {
+    display: flex;
+
+    gap: 12px;
+
+    margin-top: 20px;
+}
+
+
+.search-row input {
+    width: 100%;
+    max-width: 400px;
+
+    padding: 12px 14px;
+
+    font-size: 16px;
+
+    border: 1px solid #ccd4da;
+    border-radius: 7px;
+}
+
+
+.search-row input:focus {
+    outline: none;
+
+    border-color: #1f4f66;
+}
+
+
+/* =========================================================
+   7. BUTTONS
+   ========================================================= */
+
+.primary-button {
+    padding: 12px 22px;
+
+    border: none;
+    border-radius: 7px;
+
+    background-color: #1f4f66;
+    color: white;
+
+    font-size: 15px;
+
+    cursor: pointer;
+}
+
+
+.primary-button:hover {
+    background-color: #173e51;
+}
+
+
+.secondary-button {
+    padding: 10px 18px;
+
+    background-color: white;
+
+    color: #24313d;
+
+    border: 1px solid #b9c4ca;
+    border-radius: 7px;
+
+    cursor: pointer;
+}
+
+
+.secondary-button:hover {
+    background-color: #f4f6f8;
+}
+
+
+/* =========================================================
+   8. SEARCH MESSAGE
+   ========================================================= */
+
+#searchMessage {
+    margin-top: 14px;
+
+    color: #a24a3c;
+}
+
+
+/* =========================================================
+   9. PARTICIPANT INFORMATION
+   ========================================================= */
+
+#participantSection {
+    margin-top: 20px;
+}
+
+
+#participantSection p {
+    font-size: 17px;
+}
+
+
+/* =========================================================
+   10. TABLES
+   We will use this soon for participant responses.
+   ========================================================= */
+
+table {
+    width: 100%;
+
+    margin-top: 20px;
+
+    border-collapse: collapse;
+
+    background-color: white;
+}
+
+
+th {
+    padding: 12px;
+
+    text-align: left;
+
+    border-bottom: 2px solid #d9e0e4;
+
+    font-size: 14px;
+}
+
+
+td {
+    padding: 12px;
+
+    border-bottom: 1px solid #e5e9ec;
+
+    vertical-align: top;
+
+    font-size: 14px;
+}
+
+
+tbody tr:hover {
+    background-color: #f7f9fa;
+}
+
+
+/* =========================================================
+   11. UTILITY CLASSES
+   ========================================================= */
+
+.hidden {
+    display: none;
+}
+
+
+/* =========================================================
+   12. SMALL SCREENS
+   ========================================================= */
+
+@media (max-width: 800px) {
+
+    .topbar {
+        flex-direction: column;
+        align-items: flex-start;
+
+        gap: 15px;
+
+        padding: 18px 20px;
+    }
+
+
+    .navigation {
+        flex-wrap: wrap;
+
+        gap: 14px;
+    }
+
+
+    .page-container {
+        padding: 25px 18px 50px;
+    }
+
+
+    .search-row {
+        flex-direction: column;
+    }
+
+
+    .search-row input {
+        max-width: none;
+    }
+
+}

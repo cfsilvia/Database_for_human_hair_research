@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+
+    <meta
+        name="viewport"
+        content="width=device-width, initial-scale=1.0"
+    >
+
+    <title>Participant Responses</title>
+
+    <link
+        rel="stylesheet"
+        href="/static/css/style.css"
+    >
+</head>
+
+<body>
+
+    <header class="topbar">
+
+        <div class="brand">
+            Hair Research Database
+        </div>
+
+        <nav class="navigation">
+            <a href="/" class="nav-link">
+                Home
+            </a>
+        </nav>
+
+    </header>
+
+
+    <main class="page-container">
+
+        <section class="hero">
+
+            <h1>
+                Participant Responses
+            </h1>
+
+            <p>
+                Subject ID:
+                <strong id="subjectIdDisplay"></strong>
+            </p>
+
+        </section>
+
+
+        <section class="card">
+
+            <button
+                id="backButton"
+                class="secondary-button"
+            >
+                ← Back to Participant
+            </button>
+
+        </section>
+
+
+        <section class="card">
+
+            <div id="responsesMessage">
+                Loading responses...
+            </div>
+
+            <div class="table-wrapper">
+
+                <table id="responsesTable" class="hidden">
+
+                    <thead>
+
+                        <tr>
+                            <th>Questionnaire</th>
+                            <th>Test</th>
+                            <th>Gender</th>
+                            <th>Question</th>
+                            <th>Parent Q</th>
+                            <th>Question Text</th>
+                            <th>Numeric Answer</th>
+                            <th>Text Answer</th>
+                        </tr>
+
+                    </thead>
+
+                    <tbody id="responsesTableBody">
+                    </tbody>
+
+                </table>
+
+            </div>
+
+        </section>
+
+    </main>
+
+
+    <script src="/static/js/api.js"></script>
+    <script src="/static/js/responses.js"></script>
+
+</body>
+
+</html>
