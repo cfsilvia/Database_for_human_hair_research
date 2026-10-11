@@ -7,6 +7,7 @@ from app.database.models import (
     Questionnaire,
     QuestionVariant,
 )
+from app.importers.canonical_mapper import assign_canonical_questions
 
 
 
@@ -146,6 +147,7 @@ def get_question_fields(row):
 def import_metadata_dataframe(db, df: pd.DataFrame,):
     variants_created = 0
     variants_existing = 0
+    variants_updated = 0
 
     for _, row in df.iterrows():
 
@@ -165,8 +167,41 @@ def import_metadata_dataframe(db, df: pd.DataFrame,):
         file_name=row["file name"],)
 
         if existing is not None:
-          variants_existing += 1
-          continue
+            changed = False
+
+            if existing.canonical_question_id != canonical.id:
+                existing.canonical_question_id = canonical.id
+                changed = True
+
+            if existing.question != question_fields["question"]:
+                existing.question = question_fields["question"]
+                changed = True
+
+            if existing.parent_question_number != question_fields["parent_question_number"]:
+                existing.parent_question_number = question_fields["parent_question_number"]
+                changed = True
+
+            if existing.parent_question != question_fields["parent_question"]:
+                existing.parent_question = question_fields["parent_question"]
+                changed = True
+
+            pair_status = clean_value(row["pair_status"])
+            pair_similarity = clean_value(row["pair_similarity"])
+
+            if existing.pair_status != pair_status:
+                existing.pair_status = pair_status
+                changed = True
+
+            if existing.pair_similarity != pair_similarity:
+                existing.pair_similarity = pair_similarity
+                changed = True
+
+            if changed:
+                variants_updated += 1
+            else:
+                variants_existing += 1
+
+            continue
 
         variant = QuestionVariant(canonical_question_id=canonical.id, questionnaire_id=questionnaire.id,
                  question_number=question_fields["question_number"], question=question_fields["question"],
@@ -183,6 +218,7 @@ def import_metadata_dataframe(db, df: pd.DataFrame,):
     return {
         "variants_created": variants_created,
         "variants_existing": variants_existing,
+        "variants_updated": variants_updated,
     }
     
     
@@ -198,6 +234,8 @@ def import_metadata_workbook(db,excel_path,):
     for sheet_name in excel.sheet_names:
 
         df = pd.read_excel(excel_path,sheet_name=sheet_name,)
+
+        df = assign_canonical_questions(df)
 
         result = import_metadata_dataframe(db=db,df=df,)
 

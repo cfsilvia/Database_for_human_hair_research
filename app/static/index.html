@@ -13,7 +13,7 @@
 
     <link
         rel="stylesheet"
-        href="/static/css/style.css"
+        href="/static/css/style.css?v=4"
     >
 </head>
 
@@ -29,361 +29,269 @@
             Hair Research Database
         </div>
 
-        <nav class="navigation">
+    </header>
+
+
+    <div class="app-layout">
+
+        <!-- ========================================= -->
+        <!-- LEFT SIDEBAR -->
+        <!-- ========================================= -->
+
+        <aside class="sidebar">
 
             <a
                 href="/"
-                class="nav-link active"
+                class="sidebar-link active"
             >
                 Home
             </a>
 
+            <div class="sidebar-section-title">
+                DATA
+            </div>
+
             <a
                 href="#"
-                class="nav-link"
+                id="participantsLink"
+                class="sidebar-link"
             >
                 Participants
             </a>
 
             <a
                 href="#"
-                class="nav-link"
+                class="sidebar-link"
             >
-                Import / Update
+                Summary data
             </a>
 
             <a
                 href="#"
-                class="nav-link"
+                class="sidebar-link"
             >
-                Export
+                Questionnaires
             </a>
 
             <a
                 href="#"
-                class="nav-link"
+                class="sidebar-link"
             >
-                Analysis
+                Hair samples
             </a>
 
-        </nav>
+            <a
+                href="#"
+                class="sidebar-link"
+            >
+                Mass spectrometry
+            </a>
 
-    </header>
-
-
-    <!-- ========================================= -->
-    <!-- MAIN PAGE -->
-    <!-- ========================================= -->
-
-    <main class="page-container">
-
-
-        <!-- ===================================== -->
-        <!-- PAGE TITLE -->
-        <!-- ===================================== -->
-
-        <section class="hero">
-
-            <h1>
-                Hair Research Database
-            </h1>
-
-            <p>
-                Participant questionnaire data,
-                responses and research analysis
-            </p>
-
-        </section>
-
-
-        <!-- ===================================== -->
-        <!-- PARTICIPANT SEARCH -->
-        <!-- ===================================== -->
-
-        <section class="card">
-
-            <h2>
-                Search Participant
-            </h2>
-
-            <p>
-                Enter a Subject ID to view participant data.
-            </p>
-
-            <div class="search-row">
-
-                <input
-                    id="subjectId"
-                    type="number"
-                    placeholder="Enter Subject ID"
-                >
-
-                <button
-                    id="searchButton"
-                    class="primary-button"
-                >
-                    Search
-                </button>
-
+            <div class="sidebar-section-title">
+                UPDATE DATABASE
             </div>
 
-            <div id="searchMessage"></div>
-
-        </section>
+        </aside>
 
 
-        <!-- ===================================== -->
-        <!-- PARTICIPANT SUMMARY -->
-        <!-- ===================================== -->
+        <!-- ========================================= -->
+        <!-- PAGE CONTENT -->
+        <!-- ========================================= -->
 
-        <section
-            id="participantSection"
-            class="card hidden"
-        >
+        <main class="page-container">
 
-            <div class="section-header">
+            <section
+                id="participantsTableSection"
+                class="card hidden"
+            >
 
-                <div>
+                <div class="section-header">
 
-                    <h2>
-                        Participant
-                    </h2>
+                    <div>
 
-                    <p>
-                        Subject ID:
-                        <strong
-                            id="participantSubjectId"
+                        <h1>
+                            Participants
+                        </h1>
+
+                    </div>
+
+                </div>
+
+                <div class="participants-filters">
+
+                    <div class="filter-field">
+                        <label for="participantSubjectFilter">
+                            Subject ID
+                        </label>
+                        <input
+                            id="participantSubjectFilter"
+                            type="text"
+                            placeholder="Search subject"
                         >
-                        </strong>
-                    </p>
+                    </div>
+
+                    <div class="filter-field">
+                        <label for="answeredQuestionnaire1Filter">
+                            Questionnaire 1
+                        </label>
+                        <select id="answeredQuestionnaire1Filter">
+                            <option value="">All</option>
+                            <option value="Yes">Yes</option>
+                            <option value="No">No</option>
+                        </select>
+                    </div>
+
+                    <div class="filter-field">
+                        <label for="answeredQuestionnaire2Filter">
+                            Questionnaire 2
+                        </label>
+                        <select id="answeredQuestionnaire2Filter">
+                            <option value="">All</option>
+                            <option value="Yes">Yes</option>
+                            <option value="No">No</option>
+                        </select>
+                    </div>
+
+                    <div class="filter-field">
+                        <label for="answeredBothFilter">
+                            Both questionnaires
+                        </label>
+                        <select id="answeredBothFilter">
+                            <option value="">All</option>
+                            <option value="Yes">Yes</option>
+                            <option value="No">No</option>
+                        </select>
+                    </div>
+
+                    <div class="filter-field wide-filter-field">
+                        <label for="columnFilter">
+                            Column
+                        </label>
+                        <select id="columnFilter">
+                            <option value="">Select column</option>
+                        </select>
+                    </div>
+
+                    <div class="filter-field">
+                        <label for="conditionFilter">
+                            Condition
+                        </label>
+                        <select id="conditionFilter">
+                            <option value="contains">Contains</option>
+                            <option value="equals">Equals</option>
+                            <option value="not_equals">Does not equal</option>
+                            <option value="not_contains">Does not contain</option>
+                            <option value="empty">Is empty</option>
+                            <option value="not_empty">Is not empty</option>
+                            <option value="greater_than">Greater than</option>
+                            <option value="less_than">Less than</option>
+                        </select>
+                    </div>
+
+                    <div class="filter-field">
+                        <label for="filterValue">
+                            Value
+                        </label>
+                        <input
+                            id="filterValue"
+                            type="text"
+                            placeholder="Filter value"
+                        >
+                    </div>
+
+                    <button
+                        id="clearParticipantsFilters"
+                        class="secondary-button filter-clear-button"
+                        type="button"
+                    >
+                        Clear filters
+                    </button>
 
                 </div>
 
-                <button
-                    id="responsesButton"
-                    class="secondary-button"
+                <div class="participants-display-controls">
+
+                    <div class="filter-field wide-filter-field">
+                        <label for="testGroupFilter">
+                            Show test
+                        </label>
+                        <select id="testGroupFilter">
+                            <option value="">All tests</option>
+                        </select>
+                    </div>
+
+                    <div class="filter-field wide-filter-field">
+                        <label>
+                            Hide columns
+                        </label>
+                        <details
+                            id="hiddenColumnsDetails"
+                            class="column-hide-picker"
+                        >
+                            <summary id="hiddenColumnsSummary">
+                                Choose columns to hide
+                            </summary>
+                            <div
+                                id="hiddenColumnsFilter"
+                                class="column-hide-options"
+                            >
+                            </div>
+                        </details>
+                    </div>
+
+                    <label class="checkbox-filter-field">
+                        <input
+                            id="hideEmptyColumnsFilter"
+                            type="checkbox"
+                        >
+                        Hide empty columns
+                    </label>
+
+                    <button
+                        id="showAllParticipantsColumns"
+                        class="secondary-button filter-clear-button"
+                        type="button"
+                    >
+                        Show all columns
+                    </button>
+
+                </div>
+
+                <div
+                    id="participantsTableMessage"
+                    class="table-message"
                 >
-                    View Responses
-                </button>
+                </div>
 
-            </div>
+                <div class="wide-table-wrapper">
 
-
-            <div class="status-grid">
-
-                <div class="status-box">
-
-                    <span class="status-title">
-                        First Questionnaire
-                    </span>
-
-                    <span
-                        id="firstQuestionnaireStatus"
-                        class="status-value"
+                    <table
+                        id="participantsTable"
+                        class="wide-table hidden"
                     >
-                        —
-                    </span>
+
+                        <thead id="participantsTableHead">
+                        </thead>
+
+                        <tbody id="participantsTableBody">
+                        </tbody>
+
+                    </table>
 
                 </div>
 
+            </section>
 
-                <div class="status-box">
+        </main>
 
-                    <span class="status-title">
-                        Second Questionnaire
-                    </span>
-
-                    <span
-                        id="secondQuestionnaireStatus"
-                        class="status-value"
-                    >
-                        —
-                    </span>
-
-                </div>
-
-            </div>
-
-        </section>
-
-
-        <!-- ===================================== -->
-        <!-- RESPONSES -->
-        <!-- ===================================== -->
-
-        <section
-            id="responsesSection"
-            class="card hidden"
-        >
-
-            <h2>
-                Participant Responses
-            </h2>
-
-            <div class="table-wrapper">
-
-                <table>
-
-                    <thead>
-
-                        <tr>
-                            <th>Questionnaire</th>
-                            <th>Test</th>
-                            <th>Gender</th>
-                            <th>Question</th>
-                            <th>Parent Q</th>
-                            <th>Question Text</th>
-                            <th>Numeric Answer</th>
-                            <th>Text Answer</th>
-                        </tr>
-
-                    </thead>
-
-                    <tbody id="responsesTableBody">
-                    </tbody>
-
-                </table>
-
-            </div>
-
-        </section>
-
-
-        <!-- ===================================== -->
-        <!-- DATABASE SUMMARY -->
-        <!-- ===================================== -->
-
-        <section class="summary-section">
-
-            <h2>
-                Database Summary
-            </h2>
-
-            <div class="summary-grid">
-
-                <div class="summary-card">
-                    <div
-                        id="participantsCount"
-                        class="summary-number"
-                    >
-                        —
-                    </div>
-            
-                    <div class="summary-label">
-                        Participants
-                    </div>
-                </div>
-            
-            
-                <div class="summary-card">
-                    <div
-                        id="malesCount"
-                        class="summary-number"
-                    >
-                        —
-                    </div>
-            
-                    <div class="summary-label">
-                        Males
-                    </div>
-                </div>
-            
-            
-                <div class="summary-card">
-                    <div
-                        id="femalesCount"
-                        class="summary-number"
-                    >
-                        —
-                    </div>
-            
-                    <div class="summary-label">
-                        Females
-                    </div>
-                </div>
-            
-            </div>
-
-        </section>
-
-
-        <!-- ===================================== -->
-        <!-- QUICK ACTIONS -->
-        <!-- ===================================== -->
-
-        <section>
-
-            <h2>
-                Quick Actions
-            </h2>
-
-            <div class="actions-grid">
-
-                <button class="action-card">
-
-                    <span class="action-title">
-                        Participants
-                    </span>
-
-                    <span class="action-description">
-                        Browse participant records
-                    </span>
-
-                </button>
-
-
-                <button class="action-card">
-
-                    <span class="action-title">
-                        Import / Update
-                    </span>
-
-                    <span class="action-description">
-                        Import questionnaire and metadata files
-                    </span>
-
-                </button>
-
-
-                <button class="action-card">
-
-                    <span class="action-title">
-                        Export
-                    </span>
-
-                    <span class="action-description">
-                        Export research data to Excel
-                    </span>
-
-                </button>
-
-
-                <button class="action-card">
-
-                    <span class="action-title">
-                        Analysis
-                    </span>
-
-                    <span class="action-description">
-                        View questionnaire scores and results
-                    </span>
-
-                </button>
-
-            </div>
-
-        </section>
-
-    </main>
+    </div>
 
 
     <!-- ========================================= -->
     <!-- JAVASCRIPT FILES -->
     <!-- ========================================= -->
 
-    <script src="/static/js/api.js"></script>
-    <script src="/static/js/participant.js"></script>
-    <script src="/static/js/main.js"></script>
+    <script src="/static/js/participants_table.js?v=10"></script>
 
 </body>
 

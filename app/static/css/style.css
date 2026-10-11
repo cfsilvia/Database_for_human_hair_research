@@ -70,12 +70,84 @@ body {
    3. MAIN PAGE CONTAINER
    ========================================================= */
 
+.app-layout {
+    display: flex;
+
+    min-height: calc(100vh - 61px);
+}
+
+
+.sidebar {
+    width: 250px;
+
+    flex-shrink: 0;
+
+    padding: 22px 16px;
+
+    background-color: #f8f2f7;
+
+    border-right: 1px solid #e4dce5;
+}
+
+
+.sidebar-section-title {
+    margin: 24px 0 10px;
+
+    padding: 0 10px;
+
+    color: #6c5f6b;
+
+    font-size: 12px;
+    font-weight: bold;
+
+    letter-spacing: 1.2px;
+}
+
+
+.sidebar-link {
+    display: block;
+
+    padding: 10px 12px;
+
+    color: #4f4450;
+
+    text-decoration: none;
+
+    font-size: 15px;
+
+    border-radius: 7px;
+}
+
+
+.sidebar-link:hover {
+    background-color: #efe4ee;
+}
+
+
+.sidebar-link.active {
+    background-color: #ead8e8;
+
+    color: #3f233a;
+
+    font-weight: bold;
+}
+
+
 .page-container {
     max-width: 1100px;
 
     margin: 0 auto;
 
     padding: 40px 30px 80px;
+}
+
+
+.app-layout .page-container {
+    width: 100%;
+
+    max-width: none;
+
+    margin: 0;
 }
 
 
@@ -268,6 +340,380 @@ tbody tr:hover {
 }
 
 
+.wide-table-wrapper {
+    width: 100%;
+
+    max-height: 70vh;
+
+    overflow: auto;
+
+    border: 1px solid #e4e8eb;
+    border-radius: 10px;
+}
+
+
+.participants-filters {
+    display: flex;
+
+    flex-wrap: wrap;
+
+    align-items: center;
+
+    gap: 10px 12px;
+
+    margin: 14px 0 16px;
+
+    padding: 12px 14px;
+
+    background-color: #fbf8fb;
+
+    border: 1px solid #eadfe9;
+    border-radius: 10px;
+}
+
+
+.participants-display-controls {
+    display: flex;
+
+    flex-wrap: nowrap;
+
+    align-items: center;
+
+    gap: 10px 12px;
+
+    margin: 0 0 16px;
+
+    padding: 12px 14px;
+
+    background-color: #f7fafb;
+
+    border: 1px solid #dfe8ec;
+    border-radius: 10px;
+}
+
+
+.participants-display-controls .wide-filter-field {
+    flex: 0 1 360px;
+
+    min-width: 220px;
+}
+
+
+.filter-field {
+    display: flex;
+
+    flex-direction: row;
+
+    align-items: center;
+
+    gap: 6px;
+
+    min-width: auto;
+}
+
+
+.wide-filter-field {
+    flex: 1 1 320px;
+
+    min-width: 280px;
+}
+
+
+.filter-field label {
+    color: #5f5360;
+
+    font-size: 12px;
+    font-weight: bold;
+
+    white-space: nowrap;
+}
+
+
+.filter-field input,
+.filter-field select {
+    padding: 9px 10px;
+
+    border: 1px solid #cfd6dc;
+    border-radius: 7px;
+
+    background-color: white;
+
+    font-size: 14px;
+}
+
+
+.column-hide-picker {
+    position: relative;
+
+    width: 100%;
+}
+
+
+.column-hide-picker summary {
+    padding: 9px 10px;
+
+    border: 1px solid #cfd6dc;
+    border-radius: 7px;
+
+    background-color: white;
+
+    cursor: pointer;
+
+    font-size: 14px;
+}
+
+
+.column-hide-options {
+    position: absolute;
+
+    top: calc(100% + 4px);
+    left: 0;
+
+    z-index: 20;
+
+    width: min(680px, 80vw);
+    max-height: 360px;
+
+    overflow: auto;
+
+    padding: 10px;
+
+    background-color: white;
+
+    border: 1px solid #cfd6dc;
+    border-radius: 8px;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+}
+
+
+.column-hide-option {
+    display: flex;
+
+    align-items: flex-start;
+
+    gap: 8px;
+
+    padding: 6px 4px;
+
+    color: #24313d;
+
+    font-size: 13px;
+}
+
+
+.column-hide-option:hover {
+    background-color: #f7f9fa;
+}
+
+
+.checkbox-filter-field {
+    display: flex;
+
+    align-items: center;
+
+    gap: 8px;
+
+    color: #5f5360;
+
+    font-size: 13px;
+    font-weight: bold;
+
+    white-space: nowrap;
+}
+
+
+#participantSubjectFilter {
+    width: 120px;
+}
+
+
+#answeredQuestionnaire1Filter,
+#answeredQuestionnaire2Filter,
+#answeredBothFilter {
+    width: 78px;
+}
+
+
+#columnFilter {
+    width: 100%;
+}
+
+
+#conditionFilter {
+    width: 150px;
+}
+
+
+#filterValue {
+    width: 150px;
+}
+
+
+.filter-clear-button {
+    height: 38px;
+
+    margin-left: auto;
+}
+
+
+.wide-table {
+    width: max-content;
+
+    min-width: 100%;
+
+    table-layout: auto;
+
+    margin-top: 0;
+}
+
+
+.wide-table th,
+.wide-table td {
+    width: auto;
+
+    max-width: none;
+
+    overflow: visible;
+
+    box-shadow:
+        inset -1px 0 0 #d5dde4,
+        inset 0 -1px 0 #d5dde4;
+}
+
+
+.wide-table thead th {
+    box-shadow:
+        inset -1px 0 0 #b8c6d0,
+        inset 0 -2px 0 #9fb0bd;
+}
+
+
+.wide-table th {
+    position: sticky;
+
+    top: 0;
+
+    z-index: 2;
+
+    background-color: #f8f2f7;
+
+    white-space: nowrap;
+}
+
+
+.wide-table thead tr:nth-child(2) th {
+    top: 43px;
+}
+
+
+.wide-table td {
+    white-space: normal;
+}
+
+
+.wide-table .sticky-column {
+    position: sticky;
+
+    left: 0;
+
+    z-index: 3;
+
+    min-width: 130px;
+
+    background-color: white;
+
+    font-weight: bold;
+}
+
+
+.wide-table th.sticky-column {
+    z-index: 4;
+
+    background-color: #ead8e8;
+}
+
+
+.test-group-header {
+    text-align: center;
+
+    color: #5a3152;
+}
+
+
+.wide-table .canonical-code-header {
+    color: #6c5f6b;
+
+    width: 180px;
+    min-width: 180px;
+    max-width: 180px;
+
+    text-align: start;
+    white-space: normal;
+    overflow-wrap: anywhere;
+
+    line-height: 1.25;
+}
+
+
+.wide-table .participant-answer-cell {
+    width: 180px;
+    min-width: 180px;
+    max-width: 180px;
+
+    overflow-wrap: anywhere;
+}
+
+
+.question-parent-text {
+    margin-bottom: 6px;
+
+    color: #4d5965;
+
+    font-size: 12px;
+    font-weight: bold;
+}
+
+
+.question-text {
+    color: #1769aa;
+
+    font-size: 12px;
+    font-weight: bold;
+}
+
+
+.test-color-1 { background-color: #e8f3ff !important; }
+.test-color-2 { background-color: #eaf7ec !important; }
+.test-color-3 { background-color: #fff4d8 !important; }
+.test-color-4 { background-color: #f1eafd !important; }
+.test-color-5 { background-color: #ffecef !important; }
+.test-color-6 { background-color: #e7f7f7 !important; }
+.test-color-7 { background-color: #f5f0df !important; }
+.test-color-8 { background-color: #edf0ff !important; }
+
+
+.fixed-column-header {
+    color: #5a3152;
+}
+
+
+.clickable-question-header {
+    cursor: pointer;
+}
+
+
+.clickable-question-header:hover {
+    background-color: #ead8e8;
+}
+
+
+.table-message {
+    margin-bottom: 14px;
+
+    color: #667581;
+}
+
+
 /* =========================================================
    11. UTILITY CLASSES
    ========================================================= */
@@ -282,6 +728,23 @@ tbody tr:hover {
    ========================================================= */
 
 @media (max-width: 800px) {
+
+    .app-layout {
+        flex-direction: column;
+    }
+
+
+    .sidebar {
+        width: 100%;
+
+        border-right: none;
+        border-bottom: 1px solid #e4dce5;
+    }
+
+
+    .participants-display-controls {
+        flex-wrap: wrap;
+    }
 
     .topbar {
         flex-direction: column;
@@ -312,6 +775,39 @@ tbody tr:hover {
 
     .search-row input {
         max-width: none;
+    }
+
+
+    .filter-field,
+    .wide-filter-field,
+    .checkbox-filter-field {
+        width: 100%;
+
+        min-width: 0;
+    }
+
+
+    .filter-field {
+        justify-content: space-between;
+    }
+
+
+    .filter-field input,
+    .filter-field select,
+    #participantSubjectFilter,
+    #answeredQuestionnaire1Filter,
+    #answeredQuestionnaire2Filter,
+    #answeredBothFilter,
+    #conditionFilter,
+    #filterValue {
+        width: 60%;
+    }
+
+
+    .filter-clear-button {
+        width: 100%;
+
+        margin-left: 0;
     }
 
 }

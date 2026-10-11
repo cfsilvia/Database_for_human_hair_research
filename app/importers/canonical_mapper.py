@@ -5,6 +5,7 @@ import pandas as pd
 
 
 OK_THRESHOLD = 0.80
+REVIEW_THRESHOLD = 0.55
 
 
 def clean_test_psicolog_name(name: str) -> str:
@@ -51,6 +52,93 @@ def text_similarity(text1, text2) -> float:
     return SequenceMatcher(None, text1, text2,).ratio()
 
 
+def clean_text_value(value) -> str:
+    if pd.isna(value):
+        return ""
+
+    return str(value).strip()
+
+
+def get_row_question_text(row) -> str:
+    parts = []
+
+    question = clean_text_value(
+        row.get("question")
+    )
+    subquestion = clean_text_value(
+        row.get("subquestion")
+    )
+
+    if not subquestion:
+        subquestion = clean_text_value(
+            row.get("subquestion phrase")
+        )
+
+    if question:
+        parts.append(question)
+
+    if subquestion and subquestion.lower() != "answer":
+        parts.append(subquestion)
+
+    return " ".join(parts)
+
+
+def find_best_gender_pairs(men, women):
+    candidates = []
+
+    for male_position, male in men.iterrows():
+        male_text = get_row_question_text(male)
+
+        for female_position, female in women.iterrows():
+            female_text = get_row_question_text(female)
+            similarity = text_similarity(
+                male_text,
+                female_text,
+            )
+
+            candidates.append(
+                (
+                    similarity,
+                    male_position,
+                    female_position,
+                )
+            )
+
+    candidates.sort(
+        reverse=True,
+        key=lambda item: item[0],
+    )
+
+    matched_men = set()
+    matched_women = set()
+    pairs_by_male = {}
+    pairs_by_female = {}
+
+    for similarity, male_position, female_position in candidates:
+        if similarity < REVIEW_THRESHOLD:
+            continue
+
+        if male_position in matched_men:
+            continue
+
+        if female_position in matched_women:
+            continue
+
+        matched_men.add(male_position)
+        matched_women.add(female_position)
+
+        pairs_by_male[male_position] = (
+            female_position,
+            similarity,
+        )
+        pairs_by_female[female_position] = (
+            male_position,
+            similarity,
+        )
+
+    return pairs_by_male, pairs_by_female
+
+
 def get_pair_status(male_text, female_text,threshold=OK_THRESHOLD,):
     if not male_text or not female_text:
         return "MISSING", 0.0
@@ -84,40 +172,60 @@ def assign_canonical_questions(df: pd.DataFrame,) -> pd.DataFrame:
 
         women = (group[group["gender_form"] == "female"].reset_index())
 
-        number_items = max(len(men),len(women),)
+        pairs_by_male, pairs_by_female = find_best_gender_pairs(
+            men,
+            women,
+        )
 
-        for i in range(number_items):
+        next_item_order = 1
 
-            item_order = i + 1
+        for male_position, male in men.iterrows():
 
-            male = (men.iloc[i] if i < len(men) else None)
+            item_order = next_item_order
+            next_item_order += 1
+            canonical_code = f"{test_psicolog}_{item_order:02d}"
+            female_pair = pairs_by_male.get(male_position)
 
-            female = (women.iloc[i] if i < len(women) else None)
+            if female_pair is None:
+                status = "MISSING"
+                similarity = 0.0
+            else:
+                _, similarity = female_pair
 
-            male_text = (male["question"] if male is not None else None)
+                if similarity >= OK_THRESHOLD:
+                    status = "OK"
+                else:
+                    status = "REVIEW"
 
-            female_text = (female["question"] if female is not None else None)
+            male_index = male["index"]
+            df.loc[male_index, "item_order"] = item_order
+            df.loc[male_index, "canonical_question"] = canonical_code
+            df.loc[male_index, "pair_similarity"] = similarity
+            df.loc[male_index, "pair_status"] = status
 
-            status, similarity = get_pair_status(male_text,female_text,)
+            if female_pair is not None:
+                female_position, _ = female_pair
+                female = women.loc[female_position]
+                female_index = female["index"]
 
-            canonical_code = (f"{test_psicolog}_{item_order:02d}")
+                df.loc[female_index, "item_order"] = item_order
+                df.loc[female_index, "canonical_question"] = canonical_code
+                df.loc[female_index, "pair_similarity"] = similarity
+                df.loc[female_index, "pair_status"] = status
 
-            # Male row
-            if male is not None:
-                index = male["index"]
+        for female_position, female in women.iterrows():
+            if female_position in pairs_by_female:
+                continue
 
-                df.loc[index, "item_order"] = item_order
-                df.loc[index, "canonical_question"] = canonical_code
-                df.loc[index, "pair_similarity"] = similarity
-                df.loc[index, "pair_status"] = status
+            item_order = next_item_order
+            next_item_order += 1
+            canonical_code = f"{test_psicolog}_{item_order:02d}"
+            female_index = female["index"]
 
-            # Female row
-            if female is not None:
-                index = female["index"]
-                df.loc[index, "item_order"] = item_order
-                df.loc[index, "canonical_question"] = canonical_code
-                df.loc[index, "pair_similarity"] = similarity
-                df.loc[index, "pair_status"] = status
+            df.loc[female_index, "item_order"] = item_order
+            df.loc[female_index, "canonical_question"] = canonical_code
+            df.loc[female_index, "pair_similarity"] = 0.0
+            df.loc[female_index, "pair_status"] = "MISSING"
 
     df["item_order"] = (pd.to_numeric(df["item_order"],errors="coerce",).astype("Int64"))
 

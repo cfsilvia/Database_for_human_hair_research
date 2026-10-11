@@ -44,3 +44,18 @@ async function getDatabaseSummary() {
 
     return await response.json();
 }
+
+async function getParticipantsTable() {
+
+    const response = await fetch(
+        "/api/participants-table"
+    );
+
+    if (!response.ok) {
+        throw new Error(
+            "Could not load participants table"
+        );
+    }
+
+    return await response.json();
+}
