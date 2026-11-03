@@ -5,6 +5,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
+from app.participants_export import router as participants_export_router
 from app.analysis.summary import get_summary_rows, count_unique_participants, count_gender
 from app.database.dependencies import get_db
 from app.database.models import (
@@ -14,6 +15,9 @@ from app.database.models import (
     QuestionVariant,
     CanonicalQuestion,
     Response,
+    ResponseValueLabel,
+    QuestionnaireScoringRule,
+    ScoringRuleQuestion,
 )
 
 
@@ -32,6 +36,8 @@ STATIC_DIR = BASE_DIR / "static"
 app = FastAPI(
     title="Hair Research Database"
 )
+
+app.include_router(participants_export_router)
 
 
 # ---------------------------------------------------------
@@ -188,6 +194,52 @@ def summary_test(
     }
 
 
+'''
+Input: score is a numeric score or None. rules contains enabled interpretation
+rules linked to that score, with range_min, range_max, and interpretation_he.
+Output: the Hebrew interpretation when exactly one range matches (including
+both boundaries), or None when the score is missing or no unique range matches.
+'''
+def get_score_interpretation(score, rules):
+    if score is None:
+        return None
+
+    matches = [
+        rule
+        for rule in rules
+        if rule.range_min is not None
+        and rule.range_max is not None
+        and rule.range_min <= score <= rule.range_max
+    ]
+
+    if len(matches) != 1:
+        return None
+
+    return matches[0].interpretation_he
+
+
+'''
+Input: db is the active SQLAlchemy database session.
+Output: a dictionary mapping each parent score-rule ID to its enabled
+interpretation rules.
+'''
+def get_interpretation_rules(db):
+    rules = db.scalars(
+        select(QuestionnaireScoringRule).where(
+            QuestionnaireScoringRule.is_enabled.is_(True),
+            QuestionnaireScoringRule.rule_type == "interpretation",
+            QuestionnaireScoringRule.parent_rule_id.is_not(None),
+        )
+    ).all()
+
+    rules_by_parent = {}
+    for rule in rules:
+        rules_by_parent.setdefault(rule.parent_rule_id, []).append(rule)
+
+    return rules_by_parent
+
+
+# Build the participants table with answers, total scores, and subscale scores.
 @app.get("/api/participants-table")
 def get_participants_table(db: Session = Depends(get_db)):
     """One row per subject; columns grouped by test and canonical question."""
@@ -294,6 +346,61 @@ def get_participants_table(db: Session = Depends(get_db)):
         })
     groups = list(grouped.values())
 
+    # Load calculation rules for total and subscale scores.
+    scoring_rules = db.scalars(
+        select(QuestionnaireScoringRule)
+        .where(
+            QuestionnaireScoringRule.is_enabled.is_(True),
+            QuestionnaireScoringRule.rule_type.in_(("total", "subscale")),
+            QuestionnaireScoringRule.scoring_method == "sum",
+        )
+        .order_by(
+            QuestionnaireScoringRule.test_name,
+            QuestionnaireScoringRule.rule_code,
+        )
+    ).all()
+
+    # Find the questions included in each scoring rule.
+    question_ids_by_rule = {}
+    if scoring_rules:
+        rule_questions = db.scalars(
+            select(ScoringRuleQuestion).where(
+                ScoringRuleQuestion.rule_id.in_(
+                    [rule.id for rule in scoring_rules]
+                )
+            )
+        ).all()
+
+        for link in rule_questions:
+            question_ids_by_rule.setdefault(link.rule_id, []).append(
+                link.question_id
+            )
+
+    # Add total and subscale columns after each test's questions.
+    for group in groups:
+        test_rules = [
+            rule for rule in scoring_rules
+            if rule.test_name == group["test"]
+        ]
+        test_rules.sort(
+            key=lambda rule: (rule.rule_type != "total", rule.rule_code)
+        )
+        total_count = sum(rule.rule_type == "total" for rule in test_rules)
+
+        for rule in test_rules:
+            if rule.rule_type == "total":
+                label = "Total score"
+                if total_count > 1:
+                    label += f" ({rule.rule_code})"
+            else:
+                label = rule.subscale_name or rule.rule_code
+
+            group["columns"].append({
+                "key": f"score_{rule.id}",
+                "label": label,
+                "tooltip": f"{group['test']} - {label}",
+            })
+
     participants = db.scalars(
         select(Participant).order_by(Participant.subject_id)
     ).all()
@@ -354,10 +461,18 @@ def get_participants_table(db: Session = Depends(get_db)):
             CanonicalQuestion.test_psicolog,
             Response.value_numeric,
             Response.value_text,
+            QuestionVariant.gender_form,
+            ResponseValueLabel.text_male,
+            ResponseValueLabel.text_female,
         )
         .join(QuestionnaireSession, Response.session_id == QuestionnaireSession.id)
         .join(QuestionVariant, Response.question_variant_id == QuestionVariant.id)
         .join(CanonicalQuestion, QuestionVariant.canonical_question_id == CanonicalQuestion.id)
+        .outerjoin(
+            ResponseValueLabel,
+            (ResponseValueLabel.question_id == CanonicalQuestion.id)
+            & (ResponseValueLabel.numeric_value == Response.value_numeric),
+        )
         .order_by(
             QuestionnaireSession.participant_id,
             CanonicalQuestion.test_psicolog,
@@ -365,6 +480,7 @@ def get_participants_table(db: Session = Depends(get_db)):
             Response.id,
         )
     ).all()
+    answer_labels = {}
     for answer in answers:
         row = by_participant_id.get(answer.participant_id)
         key = f"canonical_{answer.canonical_id}"
@@ -374,5 +490,53 @@ def get_participants_table(db: Session = Depends(get_db)):
                  else answer.value_text)
         if value is not None and value != "" and row[key] == "":
             row[key] = value
+            label = None
+            if answer.gender_form == "male":
+                label = answer.text_male
+            elif answer.gender_form == "female":
+                label = answer.text_female
+            if answer.value_numeric is not None and label and label.strip():
+                answer_labels.setdefault(str(row["subject_id"]), {})[key] = label
 
-    return {"fixed_columns": fixed_columns, "groups": groups, "rows": rows}
+    interpretation_rules = get_interpretation_rules(db)
+    score_interpretations = {}
+
+    # Calculate total and subscale scores for participants who answered both forms.
+    for row in rows:
+        if row["answered_both_questionnaires"] != "Yes":
+            continue
+
+        for rule in scoring_rules:
+            if rule.scoring_method != "sum":
+                continue
+
+            score_key = f"score_{rule.id}"
+            question_ids = question_ids_by_rule.get(rule.id, [])
+
+            if score_key not in row or not question_ids:
+                continue
+
+            values = [
+                row.get(f"canonical_{question_id}")
+                for question_id in question_ids
+            ]
+
+            if all(isinstance(value, (int, float)) for value in values):
+                row[score_key] = sum(values)
+
+                interpretation = get_score_interpretation(
+                    row[score_key],
+                    interpretation_rules.get(rule.id, []),
+                )
+
+                if interpretation:
+                    subject_id = str(row["subject_id"])
+                    score_interpretations.setdefault(subject_id, {})[score_key] = interpretation
+
+    return {
+        "fixed_columns": fixed_columns,
+        "groups": groups,
+        "rows": rows,
+        "answer_labels": answer_labels,
+        "score_interpretations": score_interpretations,
+    }

@@ -38,34 +38,7 @@ def extract_question_number(column_name):
 
     return None
 
-'''
-Determine if it is male or female
-'''
-def get_gender_question_numbers(db, questionnaire_id: int,):
-    variants = db.scalars(
-        select(QuestionVariant).where(QuestionVariant.questionnaire_id == questionnaire_id,
-             QuestionVariant.question.contains("מין בעת הלידה"),)).all()
 
-    return [variant.question_number for variant in variants]
-
-
-def get_gender_form(row, gender_columns):
-    if not gender_columns:
-        return None
-
-    for column in gender_columns:
-        value = row[column]
-
-        if pd.isna(value):
-            continue
-
-        if value == 1:
-            return "male"
-
-        if value == 0:
-            return "female"
-
-    return None
 
 
 '''
@@ -108,25 +81,34 @@ def find_question_variant(
     db,
     questionnaire_id: int,
     question_number: str,
-    gender_form: str | None,
+    gender_form: str,
 ):
-    query = select(
-        QuestionVariant
-    ).where(
-        QuestionVariant.questionnaire_id
-        == questionnaire_id,
 
-        QuestionVariant.question_number
-        == question_number,
-    )
+    variants = db.scalars(
+        select(QuestionVariant).where(
+            QuestionVariant.questionnaire_id
+            == questionnaire_id,
 
-    if gender_form is not None:
-        query = query.where(
+            QuestionVariant.question_number
+            == question_number,
+
             QuestionVariant.gender_form
-            == gender_form
+            == gender_form,
+        )
+    ).all()
+
+    if len(variants) == 0:
+        return None
+
+    if len(variants) > 1:
+        raise ValueError(
+            f"Multiple variants found for "
+            f"{question_number}, "
+            f"gender_form={gender_form}, "
+            f"questionnaire_id={questionnaire_id}"
         )
 
-    return db.scalar(query)
+    return variants[0]
 
 
 '''
@@ -183,7 +165,7 @@ def import_responses(db, df: pd.DataFrame, questionnaire_code: str, subject_id_c
 
     # Questionnaire 1 may contain several gender-related columns.
     # Questionnaire 2 may contain none.
-    gender_columns = get_gender_question_numbers(db=db,questionnaire_id=questionnaire.id,)
+   
 
     inserted = 0
     skipped = 0
@@ -211,10 +193,13 @@ def import_responses(db, df: pd.DataFrame, questionnaire_code: str, subject_id_c
             continue
 
         # Determine male/female form if relevant
-        gender_form = get_gender_form(
-            row=row,
-            gender_columns=gender_columns,
-        )
+        gender_form = session.wording_form
+        if gender_form not in ("male", "female"):
+           print(f"Missing wording_form for "
+                 f"Subject ID {subject_id}, "
+                 f"questionnaire {questionnaire_code}")
+           skipped += 1
+           continue
 
         # ----------------------------------------
         # Loop over questionnaire answers

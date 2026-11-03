@@ -145,9 +145,13 @@ body {
 .app-layout .page-container {
     width: 100%;
 
+    min-width: 0;
+
     max-width: none;
 
     margin: 0;
+
+    padding-top: 16px;
 }
 
 
@@ -271,6 +275,27 @@ body {
     background-color: #f4f6f8;
 }
 
+#participantsTableSection {
+    padding: 16px;
+}
+
+#participantsTableSection h1 {
+    margin: 0;
+}
+
+#participantsTableSection .section-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 12px;
+}
+
+#saveParticipantsTable:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
 
 /* =========================================================
    8. SEARCH MESSAGE
@@ -361,9 +386,9 @@ tbody tr:hover {
 
     gap: 10px 12px;
 
-    margin: 14px 0 16px;
+    margin: 8px 0;
 
-    padding: 12px 14px;
+    padding: 8px 10px;
 
     background-color: #fbf8fb;
 
@@ -375,15 +400,15 @@ tbody tr:hover {
 .participants-display-controls {
     display: flex;
 
-    flex-wrap: nowrap;
+    flex-wrap: wrap;
 
     align-items: center;
 
     gap: 10px 12px;
 
-    margin: 0 0 16px;
+    margin: 0 0 8px;
 
-    padding: 12px 14px;
+    padding: 8px 10px;
 
     background-color: #f7fafb;
 
@@ -431,6 +456,8 @@ tbody tr:hover {
 
 .filter-field input,
 .filter-field select {
+    min-width: 0;
+
     padding: 9px 10px;
 
     border: 1px solid #cfd6dc;
@@ -506,6 +533,12 @@ tbody tr:hover {
 }
 
 
+.answer-label-control {
+    margin-bottom: 8px;
+    cursor: pointer;
+}
+
+
 .checkbox-filter-field {
     display: flex;
 
@@ -569,6 +602,11 @@ tbody tr:hover {
 
 .wide-table th,
 .wide-table td {
+    padding: 6px 8px;
+
+    font-size: 13px;
+    line-height: 18px;
+
     width: auto;
 
     max-width: none;
@@ -602,11 +640,13 @@ tbody tr:hover {
 
 
 .wide-table thead tr:nth-child(2) th {
-    top: 43px;
+    top: 32px;
 }
 
 
 .wide-table td {
+    padding: 12px 8px;
+
     white-space: normal;
 }
 
@@ -618,7 +658,7 @@ tbody tr:hover {
 
     z-index: 3;
 
-    min-width: 130px;
+    min-width: 110px;
 
     background-color: white;
 
@@ -641,35 +681,37 @@ tbody tr:hover {
 
 
 .wide-table .canonical-code-header {
+    padding: 3px 8px;
+
     color: #6c5f6b;
 
-    width: 180px;
-    min-width: 180px;
-    max-width: 180px;
+    width: 140px;
+    min-width: 140px;
+    max-width: 140px;
 
     text-align: start;
     white-space: normal;
     overflow-wrap: anywhere;
 
-    line-height: 1.25;
+    line-height: 1.15;
 }
 
 
 .wide-table .participant-answer-cell {
-    width: 180px;
-    min-width: 180px;
-    max-width: 180px;
+    width: 140px;
+    min-width: 140px;
+    max-width: 140px;
 
     overflow-wrap: anywhere;
 }
 
 
 .question-parent-text {
-    margin-bottom: 6px;
+    margin-bottom: 2px;
 
     color: #4d5965;
 
-    font-size: 12px;
+    font-size: 11px;
     font-weight: bold;
 }
 
@@ -677,10 +719,51 @@ tbody tr:hover {
 .question-text {
     color: #1769aa;
 
-    font-size: 12px;
+    font-size: 11px;
     font-weight: bold;
 }
 
+
+.score-column-header .question-parent-text,
+.score-column-header .question-text {
+    color: #6b287a;
+    font-size: 14px;
+    line-height: 1.3;
+}
+
+.score-interpretation {
+    margin-top: 4px;
+    color: #b42318;
+    font-size: 14px;
+    font-weight: bold;
+}
+
+.score-sort-button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    vertical-align: middle;
+    margin-inline-start: 6px;
+    padding: 5px;
+    border: 1px solid #cdb6d4;
+    border-radius: 8px;
+    background: #ffffff;
+    color: #6b287a;
+    font: inherit;
+    cursor: pointer;
+}
+
+.score-sort-button:hover,
+[aria-sort] .score-sort-button {
+    background: #6b287a;
+    border-color: #6b287a;
+    color: white;
+}
+
+.score-sort-button:focus-visible {
+    outline: 2px solid #6b287a;
+    outline-offset: 2px;
+}
 
 .test-color-1 { background-color: #e8f3ff !important; }
 .test-color-2 { background-color: #eaf7ec !important; }
@@ -708,9 +791,13 @@ tbody tr:hover {
 
 
 .table-message {
-    margin-bottom: 14px;
+    margin-bottom: 8px;
 
     color: #667581;
+}
+
+#participantsExportMessage:empty {
+    display: none;
 }
 
 
@@ -768,6 +855,11 @@ tbody tr:hover {
     }
 
 
+    .card {
+        padding: 16px;
+    }
+
+
     .search-row {
         flex-direction: column;
     }
@@ -780,14 +872,22 @@ tbody tr:hover {
 
     .filter-field,
     .wide-filter-field,
-    .checkbox-filter-field {
+    .checkbox-filter-field,
+    .participants-display-controls .wide-filter-field {
         width: 100%;
 
         min-width: 0;
     }
 
 
+    .participants-display-controls .wide-filter-field {
+        flex-basis: 100%;
+    }
+
+
     .filter-field {
+        flex-wrap: wrap;
+
         justify-content: space-between;
     }
 

@@ -1,5 +1,35 @@
 # AGENTS.md
 
+# Coding Instructions
+
+Write simple, readable Python code.
+
+Rules:
+- Prefer the simplest working solution.
+- Use functions instead of classes.
+- Avoid unnecessary abstractions.
+- Avoid complex design patterns.
+- Use standard Python libraries when possible.
+- Keep functions short and understandable.
+- Do not add features that were not requested.
+- Do not refactor unrelated code.
+- Modify as few lines as possible.
+- Preserve existing code structure.
+- Add comments only when necessary.
+- Do not create extra files unless needed.
+
+When fixing bugs:
+- Identify the specific problem.
+- Make the smallest possible correction.
+- Do not rewrite working code.
+
+Work incrementally:
+- Make one small change at a time.
+- Explain what changed.
+- Wait for confirmation before major changes.
+
+
+
 ## Repo shape
 - FastAPI entrypoint is `app.main:app`; static UI lives in `app/static/`.
 - PostgreSQL config comes from `.env` as `DATABASE_URL`; importing `app.database.connection` or `app.main` requires it.

@@ -34,7 +34,7 @@ def run():
         PROJECT_ROOT
         / "data"
         / "incoming"
-        / "שאלון 2 מספרי 20.9.xlsx"
+        / "שאלון 1 מספרי 20.9.xlsx"
     )
 
     # Correction file is an ordinary Excel file
@@ -42,10 +42,10 @@ def run():
         PROJECT_ROOT
         / "data"
         / "incoming"
-        / "Second_Questionnarie_Correction.xlsx"
+        / "First_Questionnarie_Correction.xlsx"
     )
     
-    code_questionnarie = "second-questionnaire"
+    code_questionnarie = "first-questionnaire"
 
     # Do NOT normalize questionnaire_df again
     correction_df = normalize_columns(correction_df)

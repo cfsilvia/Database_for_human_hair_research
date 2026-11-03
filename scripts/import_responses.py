@@ -12,32 +12,42 @@ from app.importers.response_importer import import_responses
 from app.importers.excel_reader import read_questionnaire_file
 
 
+# ============================================================
+# QUESTIONNAIRE CONFIGURATION
+# ============================================================
 
-def run():
+QUESTIONNAIRES = [
+    {
+        "code": "first-questionnaire",
+        "file": "שאלון 1 מספרי 20.9.xlsx",
+        "correction": "First_Questionnarie_Correction.xlsx",
+    },
+    {
+        "code": "second-questionnaire",
+        "file": "שאלון 2 מספרי 20.9.xlsx",
+        "correction": "Second_Questionnarie_Correction.xlsx",
+    },
+]
+
+
+# ============================================================
+# IMPORT ONE QUESTIONNAIRE
+# ============================================================
+
+def import_one_questionnaire(db, config):
+
+    incoming = PROJECT_ROOT / "data" / "incoming"
 
     questionnaire_df = read_questionnaire_file(
-        PROJECT_ROOT
-         / "data"
-        / "incoming"
-        / "שאלון 2 מספרי 20.9.xlsx",
-        
+        incoming / config["file"]
     )
-    
-    
 
     correction_df = pd.read_excel(
-        PROJECT_ROOT
-        / "data"
-        / "incoming"
-        / "Second_Questionnarie_Correction.xlsx"
+        incoming / config["correction"]
     )
-    
-    code_questionnarie ="second-questionnaire"
-    
+
     correction_df.columns = (
-        correction_df.columns
-        .str.strip()
-        .str.lower()
+        correction_df.columns.str.strip().str.lower()
     )
 
     questionnaire_df, n_corrected = correct_subject_ids(
@@ -48,19 +58,29 @@ def run():
         ended_column="ended",
     )
 
+    print(f"\nQuestionnaire: {config['code']}")
     print(f"Corrected IDs: {n_corrected}")
+
+    result = import_responses(
+        db=db,
+        df=questionnaire_df,
+        questionnaire_code=config["code"],
+    )
+
+    print(result)
+
+
+# ============================================================
+# MAIN
+# ============================================================
+
+def run():
 
     db = SessionLocal()
 
     try:
-
-        result = import_responses(
-            db=db,
-            df=questionnaire_df,
-            questionnaire_code=code_questionnarie,
-        )
-
-        print(result)
+        for config in QUESTIONNAIRES:
+            import_one_questionnaire(db, config)
 
     except Exception:
         db.rollback()

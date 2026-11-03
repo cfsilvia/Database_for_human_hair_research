@@ -13,7 +13,7 @@
 
     <link
         rel="stylesheet"
-        href="/static/css/style.css?v=4"
+        href="/static/css/style.css?v=12"
     >
 </head>
 
@@ -114,6 +114,15 @@
                         </h1>
 
                     </div>
+
+                    <button
+                        id="saveParticipantsTable"
+                        class="secondary-button"
+                        type="button"
+                        disabled
+                    >
+                        Save table (.xlsx)
+                    </button>
 
                 </div>
 
@@ -263,6 +272,21 @@
                 >
                 </div>
 
+                <div
+                    id="participantsExportMessage"
+                    class="table-message"
+                    role="alert"
+                >
+                </div>
+
+                <label class="checkbox-filter-field answer-label-control">
+                    <input
+                        id="showAnswerLabels"
+                        type="checkbox"
+                    >
+                    Show answers as words
+                </label>
+
                 <div class="wide-table-wrapper">
 
                     <table
@@ -291,7 +315,7 @@
     <!-- JAVASCRIPT FILES -->
     <!-- ========================================= -->
 
-    <script src="/static/js/participants_table.js?v=10"></script>
+    <script src="/static/js/participants_table.js?v=15"></script>
 
 </body>
 

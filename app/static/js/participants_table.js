@@ -1,4 +1,7 @@
 let participantsTableData = null;
+let participantsTableView = null;
+let participantsTableSaving = false;
+let participantsTableSort = null;
 
 
 document.addEventListener(
@@ -19,6 +22,16 @@ document.addEventListener(
         );
 
         setupParticipantsFilters();
+
+        document.getElementById("showAnswerLabels").addEventListener(
+            "change",
+            applyParticipantsFilters
+        );
+
+        document.getElementById("saveParticipantsTable").addEventListener(
+            "click",
+            saveParticipantsTable
+        );
     }
 );
 
@@ -40,6 +53,11 @@ async function fetchParticipantsTable() {
 
 
 async function loadParticipantsTable() {
+
+    participantsTableSort = null;
+    participantsTableData = null;
+    participantsTableView = null;
+    updateSaveParticipantsButton();
 
     const section = document.getElementById(
         "participantsTableSection"
@@ -84,6 +102,9 @@ async function loadParticipantsTable() {
 
     } catch (error) {
 
+        participantsTableData = null;
+        participantsTableView = null;
+        updateSaveParticipantsButton();
         console.error(error);
         message.textContent =
             error.message;
@@ -245,6 +266,33 @@ function populateDisplayColumnControls(fixedColumns, groups, columns) {
 
         hiddenColumnsFilter.innerHTML = "";
 
+        for (const group of groups || []) {
+            const button = document.createElement("button");
+            button.type = "button";
+            button.className = "secondary-button";
+            button.textContent = `Hide questions: ${group.test}`;
+
+            button.addEventListener("click", () => {
+                const questionKeys = new Set(
+                    group.columns
+                        .filter(column => column.key.startsWith("canonical_"))
+                        .map(column => column.key)
+                );
+
+                for (const checkbox of hiddenColumnsFilter.querySelectorAll(
+                    "input[type='checkbox']"
+                )) {
+                    if (questionKeys.has(checkbox.value)) {
+                        checkbox.checked = true;
+                    }
+                }
+
+                applyParticipantsFilters();
+            });
+
+            hiddenColumnsFilter.appendChild(button);
+        }
+
         for (const column of columns) {
             const label = document.createElement(
                 "label"
@@ -281,6 +329,56 @@ function populateDisplayColumnControls(fixedColumns, groups, columns) {
 }
 
 
+function getDisplayedParticipantsRows(rows, groups) {
+    if (!document.getElementById("showAnswerLabels").checked) {
+        return rows;
+    }
+
+    return rows.map(row => {
+        const displayedRow = { ...row };
+        const labels = participantsTableData.answer_labels?.[String(row.subject_id)];
+        for (const group of groups) {
+            for (const column of group.columns) {
+                const label = labels?.[column.key];
+                if (typeof row[column.key] === "number" &&
+                    typeof label === "string" && label.trim()) {
+                    displayedRow[column.key] = label;
+                }
+            }
+        }
+        return displayedRow;
+    });
+}
+
+
+function sortParticipantsRows(rows, groups) {
+    if (!participantsTableSort) {
+        return rows;
+    }
+
+    const { key, direction } = participantsTableSort;
+    if (!groups.some(group => group.columns.some(column => column.key === key))) {
+        participantsTableSort = null;
+        return rows;
+    }
+
+    return [...rows].sort((left, right) => {
+        const leftScore = left[key];
+        const rightScore = right[key];
+        const leftMissing = !Number.isFinite(leftScore);
+        const rightMissing = !Number.isFinite(rightScore);
+
+        if (leftMissing || rightMissing) {
+            return Number(leftMissing) - Number(rightMissing);
+        }
+
+        return direction === "descending"
+            ? rightScore - leftScore
+            : leftScore - rightScore;
+    });
+}
+
+
 function applyParticipantsFilters() {
 
     if (!participantsTableData) {
@@ -293,22 +391,194 @@ function applyParticipantsFilters() {
         rowMatchesParticipantsFilters
     );
 
-    drawParticipantsTable(
-        getVisibleFixedColumns(
-            participantsTableData.fixed_columns,
-            filteredRows
-        ),
-        getVisibleGroups(
-            participantsTableData.groups,
-            filteredRows
-        ),
+    const fixedColumns = getVisibleFixedColumns(
+        participantsTableData.fixed_columns,
         filteredRows
     );
+    const groups = getVisibleGroups(
+        participantsTableData.groups,
+        filteredRows
+    );
+
+    const sortedRows = sortParticipantsRows(filteredRows, groups);
+    const displayedRows = getDisplayedParticipantsRows(sortedRows, groups);
+    drawParticipantsTable(fixedColumns, groups, displayedRows);
+
+    participantsTableView = {
+        fixed_columns: fixedColumns,
+        groups: groups,
+        rows: displayedRows,
+        filter_description: getParticipantsFilterDescription(),
+    };
+    updateSaveParticipantsButton();
 
     updateParticipantsTableMessage(
         filteredRows.length,
         participantsTableData.rows.length
     );
+}
+
+
+function updateSaveParticipantsButton() {
+    const button = document.getElementById("saveParticipantsTable");
+
+    if (button) {
+        button.disabled = participantsTableSaving || !participantsTableView ||
+            participantsTableView.rows.length === 0;
+        button.textContent = participantsTableSaving ? "Saving..." : "Save table (.xlsx)";
+    }
+}
+
+
+function getParticipantsSaveDate(now = new Date()) {
+    const year = now.getFullYear();
+    const month = String(now.getMonth() + 1).padStart(2, "0");
+    const day = String(now.getDate()).padStart(2, "0");
+    return `${year}-${month}-${day}`;
+}
+
+
+async function saveParticipantsTable() {
+    if (participantsTableSaving || !participantsTableView ||
+        participantsTableView.rows.length === 0) {
+        return;
+    }
+
+    const errorMessage = document.getElementById("participantsExportMessage");
+    errorMessage.textContent = "";
+    participantsTableSaving = true;
+    updateSaveParticipantsButton();
+
+    try {
+        const saveDate = getParticipantsSaveDate();
+        const filename = `participants_table_${saveDate}.xlsx`;
+        const body = JSON.stringify({
+            ...participantsTableView,
+            save_date: saveDate,
+        });
+        let fileHandle = null;
+
+        // Open the dialog directly from the click, before the network request.
+        if (typeof window.showSaveFilePicker === "function") {
+            try {
+                fileHandle = await window.showSaveFilePicker({
+                    suggestedName: filename,
+                    types: [{
+                        description: "Excel workbook",
+                        accept: {
+                            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": [".xlsx"],
+                        },
+                    }],
+                });
+            } catch (error) {
+                if (error.name === "AbortError") {
+                    return;
+                }
+                throw error;
+            }
+        }
+
+        const response = await fetch("/api/participants-table/export", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: body,
+        });
+
+        if (!response.ok) {
+            let message = "Could not save the table. Please try again.";
+            const details = await response.json().catch(() => null);
+            if (typeof details?.detail === "string") {
+                message = details.detail;
+            }
+            throw new Error(message);
+        }
+
+        const blob = await response.blob();
+        if (fileHandle) {
+            const writable = await fileHandle.createWritable();
+            try {
+                await writable.write(blob);
+                await writable.close();
+            } catch (error) {
+                await writable.abort().catch(() => {});
+                throw error;
+            }
+            return;
+        }
+
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.href = url;
+        link.download = filename;
+        document.body.appendChild(link);
+        try {
+            link.click();
+        } finally {
+            link.remove();
+            // Give the browser time to start the download before releasing the URL.
+            setTimeout(() => URL.revokeObjectURL(url), 1000);
+        }
+    } catch (error) {
+        errorMessage.textContent = `Save failed: ${error.message}`;
+    } finally {
+        participantsTableSaving = false;
+        updateSaveParticipantsButton();
+    }
+}
+
+
+function getParticipantsFilterDescription() {
+    const filters = [];
+    const rowFilters = [
+        ["participantSubjectFilter", "Subject ID contains"],
+        ["answeredQuestionnaire1Filter", "Questionnaire 1"],
+        ["answeredQuestionnaire2Filter", "Questionnaire 2"],
+        ["answeredBothFilter", "Both questionnaires"],
+    ];
+
+    for (const [id, label] of rowFilters) {
+        const value = getFilterValue(id);
+        if (value) {
+            filters.push(`${label}: ${value}`);
+        }
+    }
+
+    const columnKey = getFilterValue("columnFilter");
+    const condition = getFilterValue("conditionFilter") || "contains";
+    const value = getFilterValue("filterValue");
+    const needsNoValue = condition === "empty" || condition === "not_empty";
+
+    if (columnKey && (value || needsNoValue)) {
+        const columnSelect = document.getElementById("columnFilter");
+        const conditionSelect = document.getElementById("conditionFilter");
+        const columnLabel = columnSelect.selectedOptions[0].textContent;
+        const conditionLabel = conditionSelect.selectedOptions[0].textContent;
+        filters.push(
+            `${columnLabel}: ${conditionLabel}${needsNoValue ? "" : ` ${value}`}`
+        );
+    }
+
+    const test = getFilterValue("testGroupFilter");
+    if (test) {
+        filters.push(`Show test: ${test}`);
+    }
+
+    const hiddenColumns = document.getElementById("hiddenColumnsFilter");
+    if (hiddenColumns) {
+        const labels = Array.from(
+            hiddenColumns.querySelectorAll("input[type='checkbox']:checked")
+        ).map(checkbox => checkbox.parentElement.textContent.trim());
+
+        if (labels.length) {
+            filters.push(`Hidden columns: ${labels.join(", ")}`);
+        }
+    }
+
+    if (shouldHideEmptyColumns()) {
+        filters.push("Hide empty columns");
+    }
+
+    return filters.length ? filters.join("; ") : "None";
 }
 
 
@@ -698,6 +968,66 @@ function appendQuestionHeaderText(header, column) {
 }
 
 
+function appendScoreSortButton(header, column, testName) {
+    const direction = participantsTableSort?.key === column.key
+        ? participantsTableSort.direction
+        : null;
+    const nextDirection = direction === "descending" ? "ascending" : "descending";
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "score-sort-button";
+    const arrowPath = direction === "descending"
+        ? "M12 4v16m-6-6 6 6 6-6"
+        : direction === "ascending"
+            ? "M12 20V4m-6 6 6-6 6 6"
+            : "M8 20V4m-4 4 4-4 4 4M16 4v16m-4-4 4 4 4-4";
+    button.innerHTML = `<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" focusable="false"><path d="${arrowPath}" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+    button.setAttribute(
+        "aria-label",
+        `Sort ${testName} - ${column.label}: ${nextDirection === "descending" ? "highest" : "lowest"} first`
+    );
+    button.title = button.getAttribute("aria-label");
+    if (direction) {
+        header.setAttribute("aria-sort", direction);
+    }
+    button.addEventListener("click", () => {
+        participantsTableSort = { key: column.key, direction: nextDirection };
+        applyParticipantsFilters();
+        const updatedButton = document.getElementById("participantsTableHead")
+            .querySelector("[aria-sort] .score-sort-button");
+        updatedButton?.focus();
+    });
+    header.querySelector(".question-text").appendChild(button);
+}
+
+
+/*
+Input: cell is the table cell, rowData is the participant's row,
+and column is the column definition.
+Output: appends the score interpretation beneath the existing number.
+*/
+function appendScoreInterpretation(cell, rowData, column) {
+    if (!column.key.startsWith("score_")) {
+        return;
+    }
+
+    const interpretation = participantsTableData
+        ?.score_interpretations
+        ?.[String(rowData.subject_id)]
+        ?.[column.key];
+
+    if (!interpretation) {
+        return;
+    }
+
+    const label = document.createElement("div");
+    label.className = "score-interpretation";
+    label.dir = "auto";
+    label.textContent = interpretation;
+    cell.appendChild(label);
+}
+
+
 function drawParticipantsTable(fixedColumns, groups, rows) {
 
     fixedColumns = fixedColumns || [];
@@ -789,6 +1119,10 @@ function drawParticipantsTable(fixedColumns, groups, rows) {
                 codeHeader,
                 column
             );
+            if (column.key.startsWith("score_")) {
+                codeHeader.classList.add("score-column-header");
+                appendScoreSortButton(codeHeader, column, group.test);
+            }
             codeHeader.title =
                 questionTooltip;
 
@@ -838,6 +1172,7 @@ function drawParticipantsTable(fixedColumns, groups, rows) {
                 document.createElement("td");
             cell.textContent =
                 rowData[column.key] ?? "";
+            appendScoreInterpretation(cell, rowData, column);
             cell.classList.add(
                 "participant-answer-cell",
                 column.colorClass
