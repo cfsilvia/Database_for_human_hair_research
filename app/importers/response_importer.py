@@ -1,4 +1,6 @@
+
 import re
+from collections import Counter, defaultdict
 
 import pandas as pd
 from sqlalchemy import select
@@ -7,19 +9,22 @@ from app.database.models import (
     Participant,
     Questionnaire,
     QuestionnaireSession,
+    CanonicalQuestion,
     QuestionVariant,
     Response,
 )
 
-'''
-Extract question number
-'''
+
+# ============================================================
+# 1. EXTRACT QUESTION NUMBER
+# ============================================================
+
 def extract_question_number(column_name):
     """
     Examples:
-        Q12       -> Q12
-        q12.1     -> Q12.1
-        Q5.other  -> Q5.other
+        Q12        -> Q12
+        q12.1      -> Q12.1
+        Q5.other   -> Q5.other
         Q13.detail -> Q13.detail
     """
 
@@ -28,23 +33,24 @@ def extract_question_number(column_name):
 
     value = column_name.strip()
 
-    match = re.match(r"^(Q\d+(?:\.\d+|\.(?:other|detail))?)$", value, flags=re.IGNORECASE,)
+    match = re.fullmatch(
+        r"Q\d+(?:\.\d+|\.(?:other|detail))?",
+        value,
+        flags=re.IGNORECASE,
+    )
 
     if match:
-        value = match.group(1)
-
-        # Only uppercase the Q
         return "Q" + value[1:]
 
     return None
 
 
+# ============================================================
+# 2. FIND QUESTIONNAIRE SESSION
+# ============================================================
 
+def get_session(db, subject_id, questionnaire_code):
 
-'''
-Find the session for the participant
-'''
-def get_session(db, subject_id: int, questionnaire_code: str,):
     questionnaire = db.scalar(
         select(Questionnaire).where(
             Questionnaire.code == questionnaire_code
@@ -65,56 +71,81 @@ def get_session(db, subject_id: int, questionnaire_code: str,):
     if participant is None:
         return None
 
-    session = db.scalar(
+    return db.scalar(
         select(QuestionnaireSession).where(
             QuestionnaireSession.participant_id == participant.id,
             QuestionnaireSession.questionnaire_id == questionnaire.id,
         )
     )
 
-    return session
 
-'''
-question variant query
-'''
-def find_question_variant(
-    db,
-    questionnaire_id: int,
-    question_number: str,
-    gender_form: str,
-):
+# ============================================================
+# 3. LOAD QUESTION VARIANTS AND CANONICAL QUESTIONS
+# ============================================================
 
-    variants = db.scalars(
-        select(QuestionVariant).where(
+def load_question_mapping(db, questionnaire_id):
+    """
+    Load variants together with their canonical questions.
+
+    Mapping:
+        question_number -> list of (variant, canonical)
+
+    The canonical question must belong to the same
+    questionnaire as the variant.
+    """
+
+    rows = db.execute(
+        select(QuestionVariant, CanonicalQuestion)
+        .join(
+            CanonicalQuestion,
+            QuestionVariant.canonical_question_id
+            == CanonicalQuestion.id,
+        )
+        .where(
             QuestionVariant.questionnaire_id
-            == questionnaire_id,
-
-            QuestionVariant.question_number
-            == question_number,
-
-            QuestionVariant.gender_form
-            == gender_form,
+            == questionnaire_id
         )
     ).all()
 
-    if len(variants) == 0:
-        return None
+    mapping = defaultdict(list)
 
-    if len(variants) > 1:
-        raise ValueError(
-            f"Multiple variants found for "
-            f"{question_number}, "
-            f"gender_form={gender_form}, "
-            f"questionnaire_id={questionnaire_id}"
+    for variant, canonical in rows:
+
+        if canonical.questionnaire_id != questionnaire_id:
+            raise ValueError(
+                "Canonical questionnaire mismatch: "
+                f"variant_id={variant.id}, "
+                f"canonical_id={canonical.id}"
+            )
+
+        number = extract_question_number(
+            variant.question_number
         )
 
-    return variants[0]
+        if number is None:
+            raise ValueError(
+                "Invalid database question number: "
+                f"{variant.question_number}"
+            )
+
+        mapping[number].append(
+            (variant, canonical)
+        )
+
+    return mapping
 
 
-'''
-store one response
-'''
-def add_response(db,session_id: int, question_variant_id: int,value,):
+# ============================================================
+# 4. ADD ONE RESPONSE
+# ============================================================
+
+def add_response(
+    db,
+    session_id,
+    question_variant_id,
+    value,
+):
+
     if pd.isna(value):
         return False
 
@@ -125,12 +156,14 @@ def add_response(db,session_id: int, question_variant_id: int,value,):
         )
     )
 
+    # Never overwrite an existing response
     if existing is not None:
         return False
 
     try:
         value_numeric = float(value)
         value_text = None
+
     except (TypeError, ValueError):
         value_numeric = None
         value_text = str(value)
@@ -148,10 +181,81 @@ def add_response(db,session_id: int, question_variant_id: int,value,):
     return True
 
 
-'''
-main function
-'''
-def import_responses(db, df: pd.DataFrame, questionnaire_code: str, subject_id_column: str = "subject id", ):
+# ============================================================
+# 5. PRINT DIAGNOSTIC REPORT
+# ============================================================
+
+def print_mapping_report(
+    questionnaire_code,
+    missing_variants,
+    opposite_gender,
+    ambiguous_variants,
+    duplicate_canonical,
+):
+
+    print("\n" + "=" * 70)
+    print("QUESTION MAPPING REPORT")
+    print("=" * 70)
+
+    print("Questionnaire:", questionnaire_code)
+
+    print(
+        "Opposite-gender answers skipped:",
+        sum(opposite_gender.values())
+    )
+
+    print(
+        "Missing question occurrences:",
+        sum(missing_variants.values())
+    )
+
+    print(
+        "Ambiguous mapping occurrences:",
+        sum(ambiguous_variants.values())
+    )
+
+    print(
+        "Duplicate canonical occurrences:",
+        sum(duplicate_canonical.values())
+    )
+
+    for title, counter in [
+        ("MISSING QUESTIONS", missing_variants),
+        ("AMBIGUOUS VARIANTS", ambiguous_variants),
+        ("DUPLICATE CANONICAL QUESTIONS", duplicate_canonical),
+    ]:
+
+        if not counter:
+            continue
+
+        print("\n" + title)
+        print("-" * 70)
+
+        for key, count in sorted(counter.items()):
+            print(f"{key}: {count}")
+
+    print("=" * 70)
+
+
+# ============================================================
+# 6. IMPORT RESPONSES
+# ============================================================
+
+def import_responses(
+    db,
+    df: pd.DataFrame,
+    questionnaire_code: str,
+    created_session_ids,
+    subject_id_column: str = "subject id",
+):
+
+    if created_session_ids is None:
+        raise ValueError(
+            "created_session_ids must be provided"
+        )
+
+    allowed_sessions = set(created_session_ids)
+
     questionnaire = db.scalar(
         select(Questionnaire).where(
             Questionnaire.code == questionnaire_code
@@ -163,18 +267,44 @@ def import_responses(db, df: pd.DataFrame, questionnaire_code: str, subject_id_c
             f"Questionnaire not found: {questionnaire_code}"
         )
 
-    # Questionnaire 1 may contain several gender-related columns.
-    # Questionnaire 2 may contain none.
-   
+    if subject_id_column not in df.columns:
+        raise ValueError(
+            f"Missing column: {subject_id_column}"
+        )
+
+    # Load mappings once rather than querying
+    # PostgreSQL for every individual answer.
+    question_mapping = load_question_mapping(
+        db,
+        questionnaire.id,
+    )
+
+    question_columns = [
+        (column, extract_question_number(column))
+        for column in df.columns
+    ]
+
+    question_columns = [
+        (column, number)
+        for column, number in question_columns
+        if number is not None
+        # Questionnaire 2's Q1 collects the subject ID, not a response.
+        and not (questionnaire_code == "second-questionnaire" and number == "Q1")
+    ]
 
     inserted = 0
     skipped = 0
-    missing_question = 0
     missing_session = 0
 
-    # ----------------------------------------
-    # Loop over participants
-    # ----------------------------------------
+    missing_variants = Counter()
+    opposite_gender = Counter()
+    ambiguous_variants = Counter()
+    duplicate_canonical = Counter()
+
+    # --------------------------------------------------------
+    # LOOP OVER PARTICIPANTS
+    # --------------------------------------------------------
+
     for _, row in df.iterrows():
 
         subject_id = row.get(subject_id_column)
@@ -185,54 +315,149 @@ def import_responses(db, df: pd.DataFrame, questionnaire_code: str, subject_id_c
 
         subject_id = int(subject_id)
 
-        # Find this participant's questionnaire session
-        session = get_session(db=db,subject_id=subject_id, questionnaire_code=questionnaire_code,)
+        session = get_session(
+            db,
+            subject_id,
+            questionnaire_code,
+        )
 
         if session is None:
             missing_session += 1
             continue
 
-        # Determine male/female form if relevant
+        # Existing questionnaire sessions are not changed
+        if session.id not in allowed_sessions:
+            skipped += 1
+            continue
+
         gender_form = session.wording_form
+
         if gender_form not in ("male", "female"):
-           print(f"Missing wording_form for "
-                 f"Subject ID {subject_id}, "
-                 f"questionnaire {questionnaire_code}")
-           skipped += 1
-           continue
+            skipped += 1
+            continue
 
-        # ----------------------------------------
-        # Loop over questionnaire answers
-        # ----------------------------------------
-        for column in df.columns:
+        # Track canonical questions for this session
+        seen_canonical = set()
 
-            question_number = extract_question_number(column)
+        # ----------------------------------------------------
+        # LOOP OVER ANSWERS
+        # ----------------------------------------------------
 
-            if question_number is None:
-                continue
-
-            variant = find_question_variant(db=db, questionnaire_id=questionnaire.id, question_number=question_number,
-                                            gender_form=gender_form,)
-
-            if variant is None:
-                missing_question += 1
-                continue
-
+        for column, question_number in question_columns:
+            
             value = row[column]
 
             if pd.isna(value):
                 continue
 
-            created = add_response(db=db,session_id=session.id, question_variant_id=variant.id, value=value,)
+            candidates = question_mapping.get(
+                question_number,
+                [],
+            )
+
+            # Question number absent from metadata
+            if not candidates:
+                missing_variants[
+                    (question_number, gender_form)
+                ] += 1
+                continue
+
+            # Find variants for participant's wording
+            matching = [
+                (variant, canonical)
+                for variant, canonical in candidates
+                if variant.gender_form == gender_form
+            ]
+            
+            # Q1 in Questionnaire 1 is shared by both genders.
+            # Use its existing variant regardless of wording_form.
+            if (
+                questionnaire_code == "first-questionnaire"
+                and question_number == "Q1"
+                and not matching
+            ):
+                matching = [
+                    (variant, canonical)
+                    for variant, canonical in candidates
+                    if canonical.code == "DEMOG_HEALTH_01"
+                ]
+            
+            
+
+            # Known question belonging to opposite gender
+            if not matching:
+                opposite_gender[
+                    (question_number, gender_form)
+                ] += 1
+                continue
+
+            # Do not guess between multiple mappings
+            if len(matching) != 1:
+                ambiguous_variants[
+                    (question_number, gender_form)
+                ] += 1
+                continue
+
+            variant, canonical = matching[0]
+
+            if canonical.id in seen_canonical:
+                duplicate_canonical[
+                    (canonical.code, gender_form)
+                ] += 1
+                continue
+
+            seen_canonical.add(canonical.id)
+
+            created = add_response(
+                db=db,
+                session_id=session.id,
+                question_variant_id=variant.id,
+                value=value,
+            )
 
             if created:
                 inserted += 1
 
-    db.commit()
+    # --------------------------------------------------------
+    # DIAGNOSTIC REPORT
+    # --------------------------------------------------------
+
+    print_mapping_report(
+        questionnaire_code,
+        missing_variants,
+        opposite_gender,
+        ambiguous_variants,
+        duplicate_canonical,
+    )
+
+    missing_question = sum(missing_variants.values())
+    ambiguous_count = sum(ambiguous_variants.values())
+    duplicate_count = sum(duplicate_canonical.values())
+
+    print("\nRESPONSE IMPORT SUMMARY")
+    print("-" * 45)
+    print("Questionnaire:", questionnaire_code)
+    print("Inserted responses:", inserted)
+    print("Skipped rows:", skipped)
+    print("Missing sessions:", missing_session)
+    print("Missing questions:", missing_question)
+    print("Ambiguous mappings:", ambiguous_count)
+    print("Duplicate canonical mappings:", duplicate_count)
+
+    # No db.commit() here.
+    # The main script controls the transaction.
 
     return {
         "inserted": inserted,
         "skipped": skipped,
         "missing_session": missing_session,
         "missing_question": missing_question,
+        "ambiguous_variants": ambiguous_count,
+        "duplicate_canonical": duplicate_count,
+        "opposite_gender_skipped": sum(
+            opposite_gender.values()
+        ),
+        "missing_variants": dict(missing_variants),
     }
+
+

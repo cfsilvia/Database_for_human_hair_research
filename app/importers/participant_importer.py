@@ -1,3 +1,4 @@
+
 import pandas as pd
 from sqlalchemy import select
 
@@ -5,7 +6,10 @@ from app.database.models import Participant
 
 
 def import_participants(
-    db, df: pd.DataFrame, subject_id_column: str = "subject id",):
+    db,
+    df: pd.DataFrame,
+    subject_id_column: str = "subject id",
+):
     created = 0
     existing = 0
     skipped = 0
@@ -15,15 +19,27 @@ def import_participants(
             f"Column '{subject_id_column}' not found."
         )
 
-    for subject_id in df[subject_id_column]:
+    seen = set()
 
-        if pd.isna(subject_id):
+    for value in df[subject_id_column]:
+
+        if pd.isna(value):
             skipped += 1
             continue
 
-        subject_id = int(subject_id)
+        subject_id = int(value)
 
-        participant = db.scalar(select(Participant).where(Participant.subject_id == subject_id))
+        if subject_id in seen:
+            skipped += 1
+            continue
+
+        seen.add(subject_id)
+
+        participant = db.scalar(
+            select(Participant).where(
+                Participant.subject_id == subject_id
+            )
+        )
 
         if participant is not None:
             existing += 1
@@ -36,7 +52,7 @@ def import_participants(
 
         created += 1
 
-    db.commit()
+    # The calling script is responsible for db.commit()
 
     return {
         "created": created,

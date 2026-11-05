@@ -1,3 +1,4 @@
+
 import pandas as pd
 from sqlalchemy import select
 
@@ -8,11 +9,7 @@ from app.database.models import (
 )
 
 
-# ============================================================
-# 1. FIND QUESTIONNAIRE
-# ============================================================
-
-def get_questionnaire(db, questionnaire_code: str):
+def get_questionnaire(db, questionnaire_code):
 
     return db.scalar(
         select(Questionnaire).where(
@@ -21,15 +18,7 @@ def get_questionnaire(db, questionnaire_code: str):
     )
 
 
-# ============================================================
-# 2. FIND EXISTING SESSION
-# ============================================================
-
-def session_exists(
-    db,
-    participant_id: int,
-    questionnaire_id: int,
-):
+def session_exists(db, participant_id, questionnaire_id):
 
     return db.scalar(
         select(QuestionnaireSession).where(
@@ -38,14 +27,6 @@ def session_exists(
         )
     )
 
-
-# ============================================================
-# 3. CONVERT WORDING PREFERENCE
-#
-# Both questionnaires:
-# 0 = male wording
-# 1 = female wording
-# ============================================================
 
 def get_wording_form(value):
 
@@ -66,10 +47,6 @@ def get_wording_form(value):
     return None
 
 
-# ============================================================
-# 4. IMPORT OR UPDATE QUESTIONNAIRE SESSIONS
-# ============================================================
-
 def import_sessions(
     db,
     df: pd.DataFrame,
@@ -80,78 +57,50 @@ def import_sessions(
     score_column: str = "score",
 ):
 
-    # --------------------------------------------------------
-    # Find questionnaire
-    # --------------------------------------------------------
-
-    questionnaire = get_questionnaire(
-        db,
-        questionnaire_code,
-    )
+    questionnaire = get_questionnaire(db, questionnaire_code)
 
     if questionnaire is None:
         raise ValueError(
-            f"Questionnaire '{questionnaire_code}' "
-            f"not found in database."
+            f"Questionnaire not found: {questionnaire_code}"
         )
 
-    # --------------------------------------------------------
-    # Identify wording-preference question
-    # --------------------------------------------------------
-
-    wording_question = {
+    wording_questions = {
         "first-questionnaire": "Q3",
         "second-questionnaire": "Q2",
     }
 
-    wording_column = wording_question.get(
-        questionnaire_code
-    )
+    wording_column = wording_questions.get(questionnaire_code)
 
     if wording_column is None:
         raise ValueError(
             f"Unknown questionnaire: {questionnaire_code}"
         )
 
-    if wording_column not in df.columns:
-        raise ValueError(
-            f"Wording column '{wording_column}' "
-            f"not found in questionnaire DataFrame."
-        )
-
-    if subject_id_column not in df.columns:
-        raise ValueError(
-            f"Subject ID column '{subject_id_column}' "
-            f"not found in questionnaire DataFrame."
-        )
-
-    # --------------------------------------------------------
-    # Counters
-    # --------------------------------------------------------
+    for column in (subject_id_column, wording_column):
+        if column not in df.columns:
+            raise ValueError(f"Missing column: {column}")
 
     created = 0
     existing = 0
-    updated = 0
     skipped = 0
     missing_wording = 0
 
-    # --------------------------------------------------------
-    # Loop over questionnaire rows
-    # --------------------------------------------------------
+    created_session_ids = []
 
     for _, row in df.iterrows():
 
         subject_id = row[subject_id_column]
 
         if pd.isna(subject_id):
+            print(
+        f"SKIPPED SESSION: Missing Subject ID "
+        f"at DataFrame row {row.name}, "
+        f"Excel row approximately {row.name + 2}"
+    )
             skipped += 1
             continue
 
         subject_id = int(subject_id)
-
-        # ----------------------------------------------------
-        # Find participant
-        # ----------------------------------------------------
 
         participant = db.scalar(
             select(Participant).where(
@@ -160,12 +109,24 @@ def import_sessions(
         )
 
         if participant is None:
+            print(
+                        f"SKIPPED SESSION: Participant not found, "
+                        f"Subject ID = {subject_id}"
+                    )
             skipped += 1
             continue
 
-        # ----------------------------------------------------
-        # Read wording preference from Excel
-        # ----------------------------------------------------
+        # Check the participant AND the questionnaire
+        existing_session = session_exists(
+            db,
+            participant.id,
+            questionnaire.id,
+        )
+
+        # Never update an existing session
+        if existing_session is not None:
+            existing += 1
+            continue
 
         wording_form = get_wording_form(
             row[wording_column]
@@ -173,44 +134,13 @@ def import_sessions(
 
         if wording_form is None:
             missing_wording += 1
-
-        # ----------------------------------------------------
-        # Find existing session
-        # ----------------------------------------------------
-
-        existing_session = session_exists(
-            db=db,
-            participant_id=participant.id,
-            questionnaire_id=questionnaire.id,
-        )
-
-        # ----------------------------------------------------
-        # UPDATE EXISTING SESSION
-        # ----------------------------------------------------
-
-        if existing_session is not None:
-
-            existing += 1
-
-            if (
-                wording_form is not None
-                and existing_session.wording_form != wording_form
-            ):
-
-                existing_session.wording_form = wording_form
-                updated += 1
-
+            skipped += 1
             continue
-
-        # ----------------------------------------------------
-        # CREATE NEW SESSION
-        # ----------------------------------------------------
 
         started_at = row.get(started_column)
         ended_at = row.get(ended_column)
         score = row.get(score_column)
 
-        # Convert pandas missing values to SQL NULL
         if pd.isna(started_at):
             started_at = None
 
@@ -232,18 +162,15 @@ def import_sessions(
         db.add(session)
         db.flush()
 
+        created_session_ids.append(session.id)
         created += 1
 
-    # --------------------------------------------------------
-    # Save changes
-    # --------------------------------------------------------
-
-    db.commit()
+    # The calling script is responsible for db.commit()
 
     return {
         "created": created,
         "existing": existing,
-        "updated": updated,
         "skipped": skipped,
         "missing_wording": missing_wording,
+        "created_session_ids": created_session_ids,
     }
