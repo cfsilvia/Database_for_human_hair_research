@@ -2,6 +2,9 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 class Settings(BaseSettings):
     database_url: str
+    login_username: str = ""
+    login_password_hash: str = ""
+    smartsurvey_mailbox: str = ""
 
     model_config = SettingsConfigDict(
         env_file=".env",

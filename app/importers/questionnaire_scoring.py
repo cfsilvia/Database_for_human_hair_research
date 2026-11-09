@@ -1,6 +1,7 @@
 """Read and import response labels, scoring rules, and their question links."""
 
 from pathlib import Path
+from math import isclose
 import re
 import sys
 
@@ -53,7 +54,8 @@ def read_questionnaire_sheet(sheet_name, file_path):
             for i, _ in options
             for score in re.search(r"\((-?\d+(?:/-?\d+)*)\)\s*$", str(headers[i])).group(1).split("/")
         }
-        if not options or (sheet_name != "AQ" and len(allowed) != len(options)):
+        shared_scores = sheet_name in ("AQ", "lonliness")
+        if not options or (not shared_scores and len(allowed) != len(options)):
             raise ValueError(f"{sheet_name}: missing or duplicate answer scores")
         supported = {*required, "subscale_name", "test_name", *(headers[i] for i, _ in options)}
         unknown = [header for header in headers if header is not None and header not in supported]
@@ -79,11 +81,13 @@ def read_questionnaire_sheet(sheet_name, file_path):
             if key in seen:
                 raise ValueError(f"{sheet_name} row {row_number}: duplicate item {key}")
             seen.add(key)
-            values = [row[i] for i, label in options]
-            if (any(type(v) not in (int, float) or v not in allowed for v in values)
-                    or (sheet_name != "AQ" and len(set(values)) != len(values))):
+            row_options = [(i, label) for i, label in options
+                           if sheet_name != "lonliness" or row[i] is not None]
+            values = [row[i] for i, label in row_options]
+            if (not values or any(type(v) not in (int, float) or v not in allowed for v in values)
+                    or (not shared_scores and len(set(values)) != len(values))):
                 raise ValueError(f"{sheet_name} row {row_number}: invalid scores {values!r}")
-            for position, (column, label) in enumerate(options, 1):
+            for position, (column, label) in enumerate(row_options, 1):
                 records.append({
                     "source_question_number": int(number),
                     "question_text": data["question_text"], "form_number": form,
@@ -286,8 +290,8 @@ def read_scoring_rules(records_by_sheet, file_path=DEFAULT_WORKBOOK):
                     raise ValueError(f"{sheet.title} row {row_number}: invalid rule type")
                 members = {}
                 if kind != "interpretation":
-                    if data["scoring_method"] != "sum" or data["parent_rule_code"] is not None:
-                        raise ValueError(f"{sheet.title} row {row_number}: invalid sum rule")
+                    if data["scoring_method"] not in ("sum", "average") or data["parent_rule_code"] is not None:
+                        raise ValueError(f"{sheet.title} row {row_number}: invalid scoring rule")
                     if kind == "subscale" and not data["subscale_name"]:
                         raise ValueError(f"{sheet.title} row {row_number}: missing subscale")
                     members = {
@@ -303,7 +307,11 @@ def read_scoring_rules(records_by_sheet, file_path=DEFAULT_WORKBOOK):
                             for q in members)
                         for function in (min, max)
                     ]
-                    if limits != [data["min_score"], data["max_score"]]:
+                    if data["scoring_method"] == "average":
+                        limits = [limit / len(members) for limit in limits]
+                    if any(type(data[field]) not in (int, float)
+                           or not isclose(limit, data[field], rel_tol=1e-9, abs_tol=1e-9)
+                           for limit, field in zip(limits, ("min_score", "max_score"))):
                         raise ValueError(f"{sheet.title} row {row_number}: score limits disagree with items")
                 else:
                     low, high = data["range_min"], data["range_max"]

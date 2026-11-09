@@ -4,6 +4,7 @@ from datetime import datetime
 import logging
 import re
 
+from dotenv import dotenv_values
 import win32com.client
 
 
@@ -20,7 +21,9 @@ SURVEY_MAPPING = {
 
 ALLOWED_EXTENSIONS = {".csv", ".xlsx"}
 
-EXPECTED_MAILBOX = "kimchi_hair@weizmann.ac.il"
+EXPECTED_MAILBOX = dotenv_values(
+    Path(__file__).resolve().parents[1] / ".env"
+).get("SMARTSURVEY_MAILBOX", "")
 
 # -------------------------------------------
 # CONNECT TO OUTLOOK

@@ -93,6 +93,125 @@ def count(db, model):
     return db.scalar(select(func.count()).select_from(model))
 
 
+@pytest.fixture
+def average_scoring_data(scoring_data):
+    db, path = scoring_data
+    workbook = load_workbook(path)
+    sheet = workbook.create_sheet("IPIP")
+    sheet.append(["questionnaire_code", "item_number", "question_text",
+                  *[f"Option {n} ({n})" for n in range(1, 6)], "subscale_name"])
+    for number in range(1, 4):
+        scores = [5, 4, 3, 2, 1] if number == 1 else [1, 2, 3, 4, 5]
+        sheet.append([1, number, f"IPIP question {number}", *scores,
+                      "PA" if number < 3 else "BC"])
+        question = CanonicalQuestion(
+            questionnaire_id=db.scalar(select(Questionnaire.id).where(
+                Questionnaire.code == "first-questionnaire")),
+            code=f"IPIP_{number}", test_psicolog="IPIP", item_order=number,
+        )
+        db.add(question)
+        db.flush()
+        db.add(QuestionVariant(
+            canonical_question_id=question.id, questionnaire_id=question.questionnaire_id,
+            question_number=f"Q{number}", question=f"IPIP question {number}",
+            gender_form="male", file_name="IPIP",
+        ))
+    rules = workbook.create_sheet("IPIP_scoring_rules")
+    rules.append([cell.value for cell in workbook["PHQ4_scoring_rules"][1]])
+    rules.append(["IPIP", "total", "total", "average", None, 1, 5])
+    rules.append(["IPIP", "pa", "subscale", "average", "PA", 1, 5])
+    rules.append(["IPIP", "bc", "subscale", "average", "BC", 1, 5])
+    workbook.save(path)
+    workbook.close()
+    db.commit()
+    return db, path
+
+
+def test_average_and_sum_methods_persist_without_changing_values(average_scoring_data):
+    db, path = average_scoring_data
+    records = read_and_match_all(db, path)
+    rules = read_scoring_rules(records, path)
+    ipip = [rule for rule in rules if rule["test_name"] == "IPIP"]
+    assert [(rule["scoring_method"], rule["min_score"], rule["max_score"],
+             len(rule["questions"])) for rule in ipip] == [
+        ("average", 1, 5, 3), ("average", 1, 5, 2), ("average", 1, 5, 1),
+    ]
+    import_scoring_workbook(db, path, apply=True)
+    db.commit()
+    stored = {(r.test_name, r.rule_code): r
+              for r in db.scalars(select(QuestionnaireScoringRule))}
+    for code in ("total", "pa", "bc"):
+        rule = stored[("IPIP", code)]
+        assert (rule.scoring_method, rule.min_score, rule.max_score) == ("average", 1, 5)
+    for code, maximum in (("total", 6), ("depression", 3), ("anxiety", 3)):
+        rule = stored[("PHQ", code)]
+        assert (rule.scoring_method, rule.min_score, rule.max_score) == ("sum", 0, maximum)
+    assert stored[("PHQ", "positive")].parent_rule_id == stored[("PHQ", "anxiety")].id
+    for items in records.values():
+        for item in items:
+            label = db.scalar(select(ResponseValueLabel).where(
+                ResponseValueLabel.question_id == item["question_id"],
+                ResponseValueLabel.option_position == item["option_position"],
+            ))
+            assert label.numeric_value == item["numeric_value"]
+    assert all(result["new"] == 0
+               for result in import_scoring_workbook(db, path, apply=True).values())
+
+
+@pytest.mark.parametrize("sheet_name,row_number", [
+    ("IPIP_scoring_rules", 2), ("IPIP_scoring_rules", 3), ("PHQ4_scoring_rules", 2),
+])
+def test_score_limits_allow_small_float_differences(average_scoring_data, sheet_name, row_number):
+    db, path = average_scoring_data
+    workbook = load_workbook(path)
+    sheet = workbook[sheet_name]
+    expected = [sheet.cell(row_number, column).value + 1e-10 for column in (6, 7)]
+    for column, value in zip((6, 7), expected):
+        sheet.cell(row_number, column, value)
+    workbook.save(path)
+    workbook.close()
+    rules = read_scoring_rules(read_and_match_all(db, path), path)
+    rule = next(r for r in rules if r["source_sheet"] == sheet_name
+                and r["rule_code"] == ("pa" if row_number == 3 else "total"))
+    assert [rule["min_score"], rule["max_score"]] == expected
+
+
+def test_average_limits_use_each_included_items_range(average_scoring_data):
+    db, path = average_scoring_data
+    records = read_and_match_all(db, path)
+    for item in records["IPIP"]:
+        item["numeric_value"] += item["source_question_number"] - 1
+    workbook = load_workbook(path)
+    sheet = workbook["IPIP_scoring_rules"]
+    for row_number, (low, high) in enumerate(((2, 6), (1.5, 5.5), (3, 7)), 2):
+        sheet.cell(row_number, 6, low)
+        sheet.cell(row_number, 7, high)
+    workbook.save(path)
+    workbook.close()
+    rules = read_scoring_rules(records, path)
+    assert [(r["min_score"], r["max_score"]) for r in rules
+            if r["test_name"] == "IPIP"] == [(2, 6), (1.5, 5.5), (3, 7)]
+
+
+@pytest.mark.parametrize("cell,value,message", [
+    ("F2", 3, "score limits disagree"),
+    ("G3", 10, "score limits disagree"),
+    ("F2", None, "score limits disagree"),
+    ("G2", "5", "score limits disagree"),
+    ("D2", "median", "invalid scoring rule"),
+    ("E3", "missing", "no matching questions"),
+])
+def test_average_rejects_invalid_rules(average_scoring_data, cell, value, message):
+    db, path = average_scoring_data
+    workbook = load_workbook(path)
+    workbook["IPIP_scoring_rules"][cell] = value
+    workbook.save(path)
+    workbook.close()
+    with pytest.raises(ValueError, match=message):
+        import_scoring_workbook(db, path, apply=True)
+    assert not db.new and not db.dirty
+
+
 def test_preview_writes_nothing(scoring_data):
     db, path = scoring_data
     result = import_scoring_workbook(db, path)
@@ -170,6 +289,68 @@ def test_non_aq_rejects_duplicate_scores(scoring_data, duplicate_headers):
     workbook.close()
     with pytest.raises(ValueError, match="duplicate answer scores|invalid scores"):
         read_questionnaire_sheet("STAI-T", path)
+
+
+@pytest.fixture
+def loneliness_data(scoring_data):
+    db, path = scoring_data
+    workbook = load_workbook(path)
+    sheet = workbook.create_sheet("lonliness")
+    scores = [0, 1, 0, 0, 0, 1, 1, 1]
+    sheet.append(["questionnaire_code", "item_number", "question_text",
+                  *[f"Choice {n} ({score})" for n, score in enumerate(scores, 1)],
+                  "subscale_name"])
+    sheet.append([1, 1, "Loneliness question", 0, 1, *[None] * 6, "Perceived loneliness"])
+    sheet.append([1, 2, "Confiding question", None, None, 0, 0, 0, 1, 1, 1, "Confiding"])
+    rules = workbook.create_sheet("lonliness_scoring_rules")
+    rules.append([cell.value for cell in workbook["PSS_scoring_rules"][1]])
+    rules.append(["lonliness", "total", "total", "sum", None, 0, 2])
+    rules.append(["lonliness", "perceived", "subscale", "sum", "Perceived loneliness", 0, 1])
+    rules.append(["lonliness", "confiding", "subscale", "sum", "Confiding", 0, 1])
+    rules.append(["lonliness", "lonely", "interpretation", None, None,
+                  None, None, 2, 2, "Lonely", "total"])
+    workbook.save(path)
+    workbook.close()
+    form_id = db.scalar(select(Questionnaire.id).where(Questionnaire.code == "first-questionnaire"))
+    for number, wording in enumerate(["Loneliness question", "Confiding question"], 1):
+        question = CanonicalQuestion(questionnaire_id=form_id, code=f"loneliness_{number}",
+                                     test_psicolog="lonliness", item_order=number)
+        db.add(question)
+        db.flush()
+        db.add(QuestionVariant(canonical_question_id=question.id, questionnaire_id=form_id,
+                               question_number=f"Q{number}", question=wording,
+                               gender_form="male", file_name="lonliness"))
+    db.commit()
+    return db, path
+
+
+def test_loneliness_mixed_options_import_and_repeat(loneliness_data):
+    db, path = loneliness_data
+    records = read_questionnaire_sheet("lonliness", path)
+    for number, scores, labels in [(1, [0, 1], [1, 2]), (2, [0, 0, 0, 1, 1, 1], range(3, 9))]:
+        items = [r for r in records if r["source_question_number"] == number]
+        assert [r["numeric_value"] for r in items] == scores
+        assert [r["option_position"] for r in items] == list(range(1, len(scores) + 1))
+        assert [r["text_male"] for r in items] == [f"Choice {n}" for n in labels]
+    result = import_scoring_workbook(db, path, apply=True)
+    assert result["response_value_labels"]["new"] == 40
+    db.commit()
+    assert count(db, ResponseValueLabel) == 40
+    assert all(r["new"] == 0 for r in import_scoring_workbook(db, path).values())
+
+
+@pytest.mark.parametrize("invalid_score", [2, True, "0", 0.5, None])
+def test_loneliness_rejects_invalid_or_empty_scores(loneliness_data, invalid_score):
+    _, path = loneliness_data
+    workbook = load_workbook(path)
+    sheet = workbook["lonliness"]
+    sheet["D2"] = invalid_score
+    if invalid_score is None:
+        sheet["E2"] = None
+    workbook.save(path)
+    workbook.close()
+    with pytest.raises(ValueError, match="invalid scores"):
+        read_questionnaire_sheet("lonliness", path)
 
 
 def test_import_links_subscales_parents_and_repeats(scoring_data):

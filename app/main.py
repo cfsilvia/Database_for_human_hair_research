@@ -1,15 +1,18 @@
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 from fastapi import Depends, FastAPI, HTTPException
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
+from app.auth import require_login, router as auth_router
 from app.participants_export import router as participants_export_router
-from app.analysis.summary import get_summary_rows, count_unique_participants, count_gender
+from app.analysis.summary import get_participation_summary
 from app.database.dependencies import get_db
 from app.database.models import (
     Participant,
+    ParticipantTestScores,
     Questionnaire,
     QuestionnaireSession,
     QuestionVariant,
@@ -17,7 +20,7 @@ from app.database.models import (
     Response,
     ResponseValueLabel,
     QuestionnaireScoringRule,
-    ScoringRuleQuestion,
+    WarPeriod,
 )
 
 
@@ -37,6 +40,8 @@ app = FastAPI(
     title="Hair Research Database"
 )
 
+app.middleware("http")(require_login)
+app.include_router(auth_router)
 app.include_router(participants_export_router)
 
 
@@ -182,15 +187,13 @@ def get_participant_responses(
 def summary_test(
     db: Session = Depends(get_db),
 ):
-    rows = get_summary_rows(db)
-    unique_participants = count_unique_participants(rows)
-    gender_counts = count_gender(db)
+    summary = get_participation_summary(db)
 
     return {
-        "row_count": len(rows),
-         "participants": unique_participants,
-         "males": gender_counts["males"],
-        "females": gender_counts["females"],
+        **summary,
+        "participants": summary["answered_any"],
+        "males": summary["males_both"],
+        "females": summary["females_both"],
     }
 
 
@@ -238,6 +241,51 @@ def get_interpretation_rules(db):
 
     return rules_by_parent
 
+#############################################################
+
+def israel_date(value):
+    """Return the Israel calendar date; assume naive timestamps are Israel time."""
+    if value is None:
+        return None
+
+    if value.tzinfo is not None:
+        value = value.astimezone(ZoneInfo("Asia/Jerusalem"))
+
+    return value.date()
+
+
+def get_session_war(started_at, ended_at, war_periods):
+    """Return wars overlapping the answering dates, or No war/Unknown."""
+    start = israel_date(started_at)
+    end = israel_date(ended_at)
+
+    if start and end and end < start:
+        return "Unknown"
+
+    matches = []
+
+    for war in war_periods:
+        if start is not None and end is not None:
+            overlaps = start <= war.end_date and end >= war.start_date
+        else:
+            # One known date inside a war is enough to confirm overlap.
+            known_date = start if start is not None else end
+            overlaps = (
+                known_date is not None
+                and war.start_date <= known_date <= war.end_date
+            )
+
+        if overlaps:
+            matches.append(war.name)
+
+    if matches:
+        return ", ".join(matches)
+
+    if start is None or end is None:
+        return "Unknown"
+
+    return "No war"
+##################################################################
 
 # Build the participants table with answers, total scores, and subscale scores.
 @app.get("/api/participants-table")
@@ -246,31 +294,24 @@ def get_participants_table(db: Session = Depends(get_db)):
     fixed_columns = [
         {"key": "questionnaire_1_started_at", "label": "Questionnaire 1 begin"},
         {"key": "questionnaire_1_ended_at", "label": "Questionnaire 1 end"},
+        {"key": "questionnaire_1_war", "label": "Questionnaire 1 war"},
         {"key": "questionnaire_2_started_at", "label": "Questionnaire 2 begin"},
         {"key": "questionnaire_2_ended_at", "label": "Questionnaire 2 end"},
+        {"key": "questionnaire_2_war", "label": "Questionnaire 2 war"},
         {"key": "answered_questionnaire_1", "label": "Answered questionnaire 1"},
         {"key": "answered_questionnaire_2", "label": "Answered questionnaire 2"},
         {"key": "answered_both_questionnaires", "label": "Answered both questionnaires"},
     ]
 
     questionnaires = db.execute(
-        select(Questionnaire.id, Questionnaire.code).order_by(Questionnaire.id)
+        select(Questionnaire.id, Questionnaire.code)
     ).all()
-    number_by_id = {}
     preferred = {"first-questionnaire": 1, "second-questionnaire": 2}
-    used = set()
-    for q in questionnaires:
-        n = preferred.get(q.code)
-        if n is not None and n not in used:
-            number_by_id[q.id] = n
-            used.add(n)
-    for q in questionnaires:
-        if q.id not in number_by_id:
-            n = 1
-            while n in used:
-                n += 1
-            number_by_id[q.id] = n
-            used.add(n)
+    number_by_id = {
+        q.id: preferred[q.code]
+        for q in questionnaires
+        if q.code in preferred
+    }
 
     # One column per canonical ID. Male and female variants of the same
     # canonical question automatically share the same output column.
@@ -337,6 +378,7 @@ def get_participants_table(db: Session = Depends(get_db)):
             tooltip += f"\nQuestion {q.question_number}"
         group["columns"].append({
             "key": f"canonical_{q.canonical_id}",
+            "canonical_code": q.code,
             "label": q.question or q.parent_question or q.code,
             "tooltip": tooltip,
             "questionnaire_number": questionnaire_number,
@@ -346,13 +388,13 @@ def get_participants_table(db: Session = Depends(get_db)):
         })
     groups = list(grouped.values())
 
-    # Load calculation rules for total and subscale scores.
+    # Load column definitions for total and subscale scores.
     scoring_rules = db.scalars(
         select(QuestionnaireScoringRule)
         .where(
             QuestionnaireScoringRule.is_enabled.is_(True),
             QuestionnaireScoringRule.rule_type.in_(("total", "subscale")),
-            QuestionnaireScoringRule.scoring_method == "sum",
+            QuestionnaireScoringRule.scoring_method.in_(("sum", "average")),
         )
         .order_by(
             QuestionnaireScoringRule.test_name,
@@ -360,21 +402,7 @@ def get_participants_table(db: Session = Depends(get_db)):
         )
     ).all()
 
-    # Find the questions included in each scoring rule.
-    question_ids_by_rule = {}
-    if scoring_rules:
-        rule_questions = db.scalars(
-            select(ScoringRuleQuestion).where(
-                ScoringRuleQuestion.rule_id.in_(
-                    [rule.id for rule in scoring_rules]
-                )
-            )
-        ).all()
-
-        for link in rule_questions:
-            question_ids_by_rule.setdefault(link.rule_id, []).append(
-                link.question_id
-            )
+    interpretation_rules = get_interpretation_rules(db)
 
     # Add total and subscale columns after each test's questions.
     for group in groups:
@@ -399,6 +427,24 @@ def get_participants_table(db: Session = Depends(get_db)):
                 "key": f"score_{rule.id}",
                 "label": label,
                 "tooltip": f"{group['test']} - {label}",
+                "description": rule.description_he,
+                "scoring_method": rule.scoring_method,
+                "min_score": rule.min_score,
+                "max_score": rule.max_score,
+                "missing_score_label": (
+                    "No PCL answer"
+                    if rule.test_name == "PCL" and rule.rule_type == "total"
+                    else "Missing score"
+                ),
+                "interpretation_ranges": [
+                    {"min": item.range_min, "max": item.range_max,
+                     "label": item.interpretation_he}
+                    for item in sorted(
+                        interpretation_rules.get(rule.id, []),
+                        key=lambda item: (item.range_min is None,
+                                          item.range_min or 0, item.id),
+                    )
+                ],
             })
 
     participants = db.scalars(
@@ -406,17 +452,71 @@ def get_participants_table(db: Session = Depends(get_db)):
     ).all()
     rows = []
     by_participant_id = {}
+    participant_wordings = {}
     for participant in participants:
         row = {"subject_id": participant.subject_id}
         for col in fixed_columns:
             row[col["key"]] = "No" if col["key"].startswith("answered_") else ""
+        row["questionnaire_1_war"] = "Not answered"
+        row["questionnaire_2_war"] = "Not answered"
         for group in groups:
             for col in group["columns"]:
                 row[col["key"]] = ""
         rows.append(row)
         by_participant_id[participant.id] = row
 
+    # Read war dates once for the whole participants table.
+    war_periods = db.scalars(
+        select(WarPeriod).order_by(WarPeriod.start_date)
+    ).all()
+
+    questionnaire_sessions = db.scalars(
+        select(QuestionnaireSession)
+    ).all()
+
+    war_results = {}
+
+    # Check each actual session separately to avoid counting gaps between sessions.
+    for session in questionnaire_sessions:
+        number = number_by_id.get(session.questionnaire_id)
+
+        if number not in (1, 2):
+            continue
+
+        key = (session.participant_id, number)
+        result = get_session_war(
+            session.started_at,
+            session.ended_at,
+            war_periods,
+        )
+
+        war_results.setdefault(key, set()).update(result.split(", "))
+
+    # Combine results when a participant has multiple sessions.
+    for (participant_id, number), results in war_results.items():
+        row = by_participant_id.get(participant_id)
+
+        if row is None:
+            continue
+
+        names = [
+            war.name for war in war_periods
+            if war.name in results
+        ]
+
+        if names:
+            value = ", ".join(names)
+        elif "Unknown" in results:
+            value = "Unknown"
+        else:
+            value = "No war"
+
+        row[f"questionnaire_{number}_war"] = value
+
     # Session dates and completion flags remain separate from answer pivoting.
+    answered_session = (
+        QuestionnaireSession.ended_at.is_not(None) | Response.id.is_not(None)
+    )
     sessions = db.execute(
         select(
             QuestionnaireSession.participant_id,
@@ -424,6 +524,8 @@ def get_participants_table(db: Session = Depends(get_db)):
             func.min(QuestionnaireSession.started_at).label("started_at"),
             func.max(QuestionnaireSession.ended_at).label("ended_at"),
             func.count(Response.id).label("response_count"),
+            func.min(QuestionnaireSession.wording_form).filter(answered_session).label("wording_min"),
+            func.max(QuestionnaireSession.wording_form).filter(answered_session).label("wording_max"),
         )
         .select_from(QuestionnaireSession)
         .outerjoin(Response, Response.session_id == QuestionnaireSession.id)
@@ -446,6 +548,15 @@ def get_participants_table(db: Session = Depends(get_db)):
         )
         if session.response_count > 0 or session.ended_at is not None:
             row[f"answered_{prefix}"] = "Yes"
+            wordings = participant_wordings.setdefault(session.participant_id, set())
+            wordings.update(value for value in (session.wording_min, session.wording_max)
+                            if value)
+
+    for participant_id, row in by_participant_id.items():
+        wordings = participant_wordings.get(participant_id, set())
+        row["wording_form"] = next(iter(wordings)) if len(wordings) == 1 else (
+            "mixed" if wordings else None
+        )
 
     for row in rows:
         if (row["answered_questionnaire_1"] == "Yes"
@@ -498,40 +609,34 @@ def get_participants_table(db: Session = Depends(get_db)):
             if answer.value_numeric is not None and label and label.strip():
                 answer_labels.setdefault(str(row["subject_id"]), {})[key] = label
 
-    interpretation_rules = get_interpretation_rules(db)
     score_interpretations = {}
+    stored_scores = {
+        (score.subject_id, score.rule_id): score.score
+        for score in db.scalars(select(ParticipantTestScores))
+    }
 
-    # Calculate total and subscale scores for participants who answered both forms.
+    # Read total and subscale scores for participants who answered both forms.
     for row in rows:
         if row["answered_both_questionnaires"] != "Yes":
             continue
 
         for rule in scoring_rules:
-            if rule.scoring_method != "sum":
-                continue
-
             score_key = f"score_{rule.id}"
-            question_ids = question_ids_by_rule.get(rule.id, [])
+            score = stored_scores.get((row["subject_id"], rule.id))
 
-            if score_key not in row or not question_ids:
+            if score_key not in row or score is None:
                 continue
 
-            values = [
-                row.get(f"canonical_{question_id}")
-                for question_id in question_ids
-            ]
+            score = float(score)
+            interpretation = get_score_interpretation(
+                score,
+                interpretation_rules.get(rule.id, []),
+            )
+            row[score_key] = round(score, 2)
 
-            if all(isinstance(value, (int, float)) for value in values):
-                row[score_key] = sum(values)
-
-                interpretation = get_score_interpretation(
-                    row[score_key],
-                    interpretation_rules.get(rule.id, []),
-                )
-
-                if interpretation:
-                    subject_id = str(row["subject_id"])
-                    score_interpretations.setdefault(subject_id, {})[score_key] = interpretation
+            if interpretation:
+                subject_id = str(row["subject_id"])
+                score_interpretations.setdefault(subject_id, {})[score_key] = interpretation
 
     return {
         "fixed_columns": fixed_columns,

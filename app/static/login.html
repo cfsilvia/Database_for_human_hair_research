@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Login | Hair Research Database</title>
+    <link rel="stylesheet" href="/static/css/style.css?v=13">
+    <style>
+        main { max-width: 400px; margin: 10vh auto; padding: 28px; background: white; border: 1px solid #e3e7eb; border-radius: 8px; }
+        h1 { margin-top: 0; font-size: 24px; }
+        label { display: block; margin: 20px 0 8px; }
+        input, button { width: 100%; padding: 12px; font: inherit; border-radius: 4px; }
+        input { border: 1px solid #b8c3cb; }
+        button { margin-top: 24px; background: #1f4f66; color: white; border: 0; cursor: pointer; }
+        #error { color: #a62323; }
+        @media (max-width: 440px) { main { margin: 32px 16px; } }
+    </style>
+</head>
+<body>
+    <main>
+        <h1>Hair Research Database</h1>
+        <p>Sign in to access the research database.</p>
+        <p id="error" role="alert" hidden></p>
+        <form method="post" action="/login">
+            <label for="username">Username</label>
+            <input id="username" name="username" value="{{ username }}" autocomplete="username" required autofocus>
+            <label for="password">Password</label>
+            <input id="password" name="password" type="password" autocomplete="current-password" required>
+            <button type="submit">Sign in</button>
+        </form>
+    </main>
+    <script>
+        const error = new URLSearchParams(window.location.search).get("error");
+        if (error) {
+            const message = document.getElementById("error");
+            message.textContent = error === "limited"
+                ? "Too many attempts. Please try again in one minute."
+                : "Incorrect username or password.";
+            message.hidden = false;
+        }
+    </script>
+</body>
+</html>

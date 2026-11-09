@@ -13,7 +13,7 @@ from app.importers.questionnaire_scoring import (
 )
 
 # Excel file
-EXCEL_FILE = Path(r"D:\Database_for_human_hair_research\data\incoming\Quest and scoring_to_use.xlsx")
+EXCEL_FILE = DEFAULT_WORKBOOK
 
 # False = preview only
 # True = save to database

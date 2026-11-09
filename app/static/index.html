@@ -13,11 +13,11 @@
 
     <link
         rel="stylesheet"
-        href="/static/css/style.css?v=12"
+        href="/static/css/style.css?v=24"
     >
 </head>
 
-<body>
+<body class="database-page">
 
     <!-- ========================================= -->
     <!-- TOP NAVIGATION -->
@@ -28,6 +28,10 @@
         <div class="brand">
             Hair Research Database
         </div>
+
+        <form method="post" action="/logout">
+            <button type="submit">Log out</button>
+        </form>
 
     </header>
 
@@ -61,16 +65,10 @@
 
             <a
                 href="#"
+                id="summaryLink"
                 class="sidebar-link"
             >
                 Summary data
-            </a>
-
-            <a
-                href="#"
-                class="sidebar-link"
-            >
-                Questionnaires
             </a>
 
             <a
@@ -87,10 +85,6 @@
                 Mass spectrometry
             </a>
 
-            <div class="sidebar-section-title">
-                UPDATE DATABASE
-            </div>
-
         </aside>
 
 
@@ -99,6 +93,38 @@
         <!-- ========================================= -->
 
         <main class="page-container">
+
+            <section id="summarySection" class="card hidden">
+                <h1>Summary data</h1>
+                <p>Answered means at least one nonempty response or a recorded end time.</p>
+                <p id="summaryMessage" role="status"></p>
+
+                <div id="summaryContent" class="hidden">
+                    <table class="summary-table">
+                        <caption>Questionnaire participation</caption>
+                        <thead>
+                            <tr><th scope="col">Participation</th><th scope="col">Participants</th></tr>
+                        </thead>
+                        <tbody>
+                            <tr><th scope="row">Answered at least one questionnaire</th><td data-summary="answered_any"></td></tr>
+                            <tr><th scope="row">Answered questionnaire 1</th><td data-summary="answered_first"></td></tr>
+                            <tr><th scope="row">Answered questionnaire 2</th><td data-summary="answered_second"></td></tr>
+                            <tr><th scope="row">Answered both questionnaires</th><td data-summary="answered_both"></td></tr>
+                        </tbody>
+                    </table>
+
+                    <h2>Wording among participants who answered both</h2>
+                    <p>Based on the selected questionnaire wording.</p>
+                    <div class="summary-chart">
+                        <div id="wordingPie" class="wording-pie" role="img" aria-label="Questionnaire wording distribution"></div>
+                        <div>
+                            <p><span class="wording-key female-key" aria-hidden="true"></span>Female wording: <strong data-summary="females_both"></strong> <span id="femalePercent"></span></p>
+                            <p><span class="wording-key male-key" aria-hidden="true"></span>Male wording: <strong data-summary="males_both"></strong> <span id="malePercent"></span></p>
+                            <p id="wordingMessage"></p>
+                        </div>
+                    </div>
+                </div>
+            </section>
 
             <section
                 id="participantsTableSection"
@@ -126,7 +152,9 @@
 
                 </div>
 
-                <div class="participants-filters">
+                <details class="participants-filter-panel">
+                    <summary>Filter participants</summary>
+                    <div class="participants-filters">
 
                     <div class="filter-field">
                         <label for="participantSubjectFilter">
@@ -218,6 +246,8 @@
 
                 </div>
 
+                </details>
+
                 <div class="participants-display-controls">
 
                     <div class="filter-field wide-filter-field">
@@ -231,14 +261,14 @@
 
                     <div class="filter-field wide-filter-field">
                         <label>
-                            Hide columns
+                            Choose columns
                         </label>
                         <details
                             id="hiddenColumnsDetails"
                             class="column-hide-picker"
                         >
                             <summary id="hiddenColumnsSummary">
-                                Choose columns to hide
+                                All columns selected
                             </summary>
                             <div
                                 id="hiddenColumnsFilter"
@@ -255,6 +285,20 @@
                         >
                         Hide empty columns
                     </label>
+
+                    <label class="checkbox-filter-field">
+                        <input id="selectAllScores" type="checkbox" disabled>
+                        Select all scores
+                    </label>
+
+                    <button
+                        id="showSelectedParticipantsColumns"
+                        class="secondary-button"
+                        type="button"
+                        disabled
+                    >
+                        Show selected columns
+                    </button>
 
                     <button
                         id="showAllParticipantsColumns"
@@ -315,7 +359,20 @@
     <!-- JAVASCRIPT FILES -->
     <!-- ========================================= -->
 
-    <script src="/static/js/participants_table.js?v=15"></script>
+    <dialog id="scoreChartDialog" class="score-chart-dialog" aria-labelledby="scoreChartTitle">
+        <form method="dialog" class="score-chart-close">
+            <button type="submit" class="secondary-button" autofocus>Close</button>
+        </form>
+        <h2 id="scoreChartTitle" dir="auto"></h2>
+        <p id="scoreChartDescription" dir="auto"></p>
+        <p id="scoreChartMethod"></p>
+        <ul id="scoreChartRanges"></ul>
+        <p id="scoreChartPopulation"></p>
+        <div id="scoreChartGroups" class="score-chart-groups"></div>
+    </dialog>
+
+    <script src="/static/js/participants_table.js?v=29"></script>
+    <script src="/static/js/summary.js?v=2"></script>
 
 </body>
 

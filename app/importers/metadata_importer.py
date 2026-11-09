@@ -227,16 +227,37 @@ Read every sheet from you metadata workbook
 '''
 
 def import_metadata_workbook(db,excel_path,):
-    excel = pd.ExcelFile(excel_path)
+    with pd.ExcelFile(excel_path) as excel:
+        sheets = {
+            name: assign_canonical_questions(pd.read_excel(excel, sheet_name=name))
+            for name in excel.sheet_names
+        }
+
+    # Check every sheet before the first import commits any changes.
+    existing = {}
+    for variant, canonical, questionnaire in db.execute(
+        select(QuestionVariant, CanonicalQuestion, Questionnaire)
+        .join(CanonicalQuestion, QuestionVariant.canonical_question_id == CanonicalQuestion.id)
+        .join(Questionnaire, QuestionVariant.questionnaire_id == Questionnaire.id)
+    ):
+        key = (questionnaire.code, variant.question_number, variant.gender_form)
+        existing.setdefault(key, []).append((variant, canonical))
+
+    for df in sheets.values():
+        for _, row in df.iterrows():
+            fields = get_question_fields(row)
+            key = (row["questionnaire"], fields["question_number"], row["gender_form"])
+            candidates = existing.get(key, [])
+            matches = [(v, c) for v, c in candidates if v.file_name == row["file name"]]
+            if candidates and not matches:
+                raise ValueError(f"{key}: question moved between tests; reconcile metadata before importing")
+            for variant, canonical in matches:
+                if (canonical.test_psicolog != row["file name"]
+                        or canonical.item_order != int(row["item_order"])):
+                    raise ValueError(f"{key}: question numbering changed; reconcile metadata before importing")
 
     results = {}
-
-    for sheet_name in excel.sheet_names:
-
-        df = pd.read_excel(excel_path,sheet_name=sheet_name,)
-
-        df = assign_canonical_questions(df)
-
+    for sheet_name, df in sheets.items():
         result = import_metadata_dataframe(db=db,df=df,)
 
         results[sheet_name] = result
