@@ -207,6 +207,8 @@ class Participant(Base):
         index=True,
     )
 
+    gave_hair: Mapped[str | None] = mapped_column(Text, nullable=True)
+
    
 
 
@@ -430,5 +432,47 @@ class ScoringRuleQuestion(Base):
     source_question_number: Mapped[int] = mapped_column(
         Integer, nullable=False
     )
+
+
+# Store locality names and their district and subdistrict codes and names from Excel.
+class Locality(Base):
+    __tablename__ = "localities"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    locality_he: Mapped[str] = mapped_column(Text, nullable=False)
+    district_code: Mapped[int] = mapped_column(Integer, nullable=False)
+    district_he: Mapped[str] = mapped_column(Text, nullable=False)
+    subdistrict_code: Mapped[int] = mapped_column(Integer, nullable=False)
+    subdistrict_he: Mapped[str] = mapped_column(Text, nullable=False)
+
+
+class Occupation(Base):
+    __tablename__ = "occupations"
+
+    occupation_code: Mapped[str] = mapped_column(String(10), primary_key=True)
+    occupation_he: Mapped[str] = mapped_column(Text, nullable=False)
+    major_code: Mapped[str] = mapped_column(String(10), nullable=False)
+    major_group_he: Mapped[str] = mapped_column(Text, nullable=False)
+    first_group_code: Mapped[str] = mapped_column(String(10), nullable=False)
+    first_group_he: Mapped[str] = mapped_column(Text, nullable=False)
+    second_group_code: Mapped[str] = mapped_column(String(10), nullable=False)
+    second_group_he: Mapped[str] = mapped_column(Text, nullable=False)
+
+
+class OccupationOverride(Base):
+    __tablename__ = "occupation_overrides"
+
+    subject_id: Mapped[int] = mapped_column(
+        ForeignKey("participants.subject_id"), primary_key=True,
+    )
+    occupation_answer: Mapped[str] = mapped_column(Text, nullable=False)
+    major_code: Mapped[str] = mapped_column(Text, nullable=False)
+    major_group_he: Mapped[str] = mapped_column(Text, nullable=False)
+    first_group_code: Mapped[str] = mapped_column(Text, nullable=False)
+    first_group_he: Mapped[str] = mapped_column(Text, nullable=False)
+    second_group_code: Mapped[str] = mapped_column(Text, nullable=False)
+    second_group_he: Mapped[str] = mapped_column(Text, nullable=False)
+    review: Mapped[str] = mapped_column(Text, nullable=False)
+    source_filename: Mapped[str] = mapped_column(Text, nullable=False)
     
     

@@ -275,6 +275,18 @@ body {
     background-color: #f4f6f8;
 }
 
+#showBothQuestionnairesParticipants {
+    padding: 6px 12px;
+    background-color: #2563eb;
+    color: white;
+    font-size: 13px;
+}
+
+#showBothQuestionnairesParticipants:hover,
+#showBothQuestionnairesParticipants[aria-pressed="true"] {
+    background-color: #1e40af;
+}
+
 #participantsTableSection {
     padding: 16px;
 }
@@ -394,6 +406,8 @@ tbody tr:hover {
 .participants-filters {
     display: flex;
 
+    flex-direction: column;
+
     flex-wrap: wrap;
 
     align-items: center;
@@ -408,6 +422,88 @@ tbody tr:hover {
 
     border: 1px solid #eadfe9;
     border-radius: 10px;
+}
+
+.participants-filter-rows {
+    width: 100%;
+}
+
+.participants-condition-row,
+.participants-filter-actions,
+.participants-filter-results {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 10px;
+}
+
+.participants-condition-row + .participants-condition-row {
+    margin-top: 10px;
+}
+
+.participants-condition-row select,
+.participants-condition-row input {
+    min-width: 0;
+    max-width: 100%;
+    padding: 8px 10px;
+    border: 1px solid #cfd6dc;
+    border-radius: 4px;
+    background-color: white;
+}
+
+.participants-condition-column {
+    flex: 1 1 320px;
+}
+
+.participants-condition-operator {
+    flex: 0 1 190px;
+}
+
+.participants-condition-row input {
+    flex: 1 1 150px;
+}
+
+.participants-filter-actions {
+    width: 100%;
+}
+
+.participants-filter-actions .secondary-button,
+.participants-condition-row .secondary-button,
+.participants-filter-apply {
+    padding: 8px 14px;
+    border-radius: 4px;
+    font-size: 13px;
+}
+
+.participants-filter-apply {
+    background-color: #801b36;
+}
+
+.participants-filter-apply:hover {
+    background-color: #65152b;
+}
+
+.participants-text-button {
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: #801b36;
+    font: inherit;
+    cursor: pointer;
+}
+
+.participants-text-button:disabled {
+    opacity: 0.5;
+    cursor: default;
+}
+
+.participants-filter-results {
+    margin: 8px 0;
+    font-size: 13px;
+}
+
+.participants-filter-results .table-message {
+    margin: 0;
 }
 
 
@@ -629,8 +725,6 @@ tbody tr:hover {
 .wide-table {
     width: max-content;
 
-    min-width: 100%;
-
     table-layout: auto;
 
     margin-top: 0;
@@ -697,7 +791,10 @@ tbody tr:hover {
 
     z-index: 3;
 
-    min-width: 110px;
+    width: 160px;
+    min-width: 160px;
+    max-width: 160px;
+    box-sizing: border-box;
 
     background-color: white;
 
@@ -724,8 +821,8 @@ tbody tr:hover {
 
     color: #6c5f6b;
 
-    width: 140px;
-    min-width: 140px;
+    width: auto;
+    min-width: 200px;
     max-width: none;
 
     text-align: start;
@@ -738,10 +835,84 @@ tbody tr:hover {
 
 .wide-table .participant-answer-cell {
     width: auto;
-    min-width: 140px;
+    min-width: 80px;
     max-width: none;
 
     overflow-wrap: normal;
+}
+
+.wide-table .canonical-code-header:not(.score-column-header) .question-text,
+.wide-table .canonical-code-header:not(.score-column-header) .question-parent-text {
+    /* Let answers determine column widths while question headings wrap. */
+    contain: inline-size;
+}
+
+.wide-table .score-column-header {
+    min-width: 140px;
+}
+
+
+#participantsTable th:has(> .participants-column-resize) {
+    padding-right: 14px;
+}
+
+.participants-column-resize {
+    position: absolute;
+    inset: 0 0 0 auto;
+    width: 12px;
+    cursor: col-resize;
+    touch-action: none;
+}
+
+.participants-column-resize::after {
+    content: "";
+    position: absolute;
+    inset: 0 2px 0 auto;
+    margin: auto 0;
+    width: 2px;
+    height: 16px;
+    background: #647484;
+}
+
+.participants-column-resize:hover,
+.participants-column-resize:focus-visible {
+    background: #b8c6d0;
+}
+
+.participants-column-resize:focus-visible {
+    outline: 2px solid #1769aa;
+    outline-offset: -2px;
+}
+
+#participantsTable.participants-columns-sized {
+    table-layout: fixed;
+}
+
+#participantsTable.participants-columns-sized th,
+#participantsTable.participants-columns-sized td {
+    width: auto;
+    min-width: 0;
+    max-width: none;
+    white-space: normal;
+    overflow: hidden;
+    overflow-wrap: anywhere;
+}
+
+#participantsTable.participants-columns-sized .occupation-review {
+    white-space: pre-line;
+}
+
+#participantsTable.participants-columns-sized .test-group-header {
+    white-space: nowrap;
+    text-overflow: ellipsis;
+}
+
+#participantsTable.participants-columns-sized thead tr:nth-child(2) th {
+    top: var(--participants-group-header-height, 32px);
+}
+
+#participantsTable.participants-columns-sized .score-chart-button {
+    max-width: 100%;
 }
 
 
@@ -964,6 +1135,31 @@ tbody tr:hover {
 .score-chart-close {
     display: flex;
     justify-content: flex-end;
+    gap: 8px;
+}
+
+.score-cutoff-dialog {
+    width: min(650px, calc(100vw - 48px));
+}
+
+.score-cutoff-table {
+    width: 100%;
+    margin-bottom: 16px;
+}
+
+.score-cutoff-table th,
+.score-cutoff-table td {
+    padding: 8px;
+}
+
+.score-cutoff-table input {
+    width: 100%;
+    min-width: 70px;
+    box-sizing: border-box;
+}
+
+#scoreCutoffError {
+    color: #b42318;
 }
 
 .score-chart-button {
@@ -1032,6 +1228,46 @@ tbody tr:hover {
     display: block;
     height: 24px;
     border-radius: 3px;
+}
+
+@media print {
+    body:has(#scoreChartDialog[open]) {
+        height: auto;
+        overflow: visible;
+        background: white;
+    }
+
+    body:has(#scoreChartDialog[open]) > :not(#scoreChartDialog),
+    #scoreChartDialog .score-chart-close {
+        display: none;
+    }
+
+    #scoreChartDialog[open] {
+        position: static;
+        width: 100%;
+        max-width: none;
+        height: auto;
+        max-height: none;
+        overflow: visible;
+        margin: 0;
+        padding: 0;
+        border: 0;
+        print-color-adjust: exact;
+        -webkit-print-color-adjust: exact;
+    }
+
+    #scoreChartDialog::backdrop {
+        display: none;
+    }
+
+    #scoreChartDialog .score-chart-groups {
+        display: block;
+    }
+
+    #scoreChartDialog .score-chart-groups > section,
+    #scoreChartDialog .score-chart-legend li {
+        break-inside: avoid;
+    }
 }
 
 @media (max-width: 800px) {
@@ -1131,3 +1367,20 @@ tbody tr:hover {
     }
 
 }
+.unknown-location,
+.approximate-location {
+    color: #c00000;
+    font-weight: bold;
+}
+
+td.participant-answer-cell.occupation-difference,
+.occupation-comparison-legend {
+    background-color: #ffc7ce !important;
+    color: #8b0000;
+}
+
+.wide-table td.occupation-review {
+    white-space: pre-line;
+    min-width: 280px;
+}
+

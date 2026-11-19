@@ -6,6 +6,7 @@ from io import BytesIO
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import Response
 from openpyxl import Workbook
+from openpyxl.comments import Comment
 from openpyxl.styles import Alignment, Font, PatternFill
 from openpyxl.utils import get_column_letter
 from openpyxl.utils.exceptions import IllegalCharacterError
@@ -27,12 +28,23 @@ class ExportGroup(BaseModel):
     columns: list[ExportColumn] = Field(min_length=1)
 
 
+class AutomaticOccupationValue(BaseModel):
+    code: str
+    label: str
+
+
+class OccupationComparison(BaseModel):
+    automatic: dict[str, AutomaticOccupationValue]
+    different_columns: list[str]
+
+
 class ParticipantsTableExport(BaseModel):
     fixed_columns: list[ExportColumn]
     groups: list[ExportGroup]
     rows: list[dict[str, str | int | float | bool | None]] = Field(min_length=1)
     filter_description: str = "None"
     save_date: date
+    occupation_comparisons: dict[str, OccupationComparison] = Field(default_factory=dict)
 
 
 def build_participants_workbook(table: ParticipantsTableExport) -> bytes:
@@ -94,7 +106,18 @@ def build_participants_workbook(table: ParticipantsTableExport) -> bytes:
 
     for row_index, row in enumerate(table.rows, start=6):
         for column_index, column in enumerate(columns, start=1):
-            write_cell(row_index, column_index, row.get(column.key))
+            cell = write_cell(row_index, column_index, row.get(column.key))
+            comparison = table.occupation_comparisons.get(str(row.get("subject_id")))
+            if (comparison and column.key in comparison.different_columns
+                    and column.key in comparison.automatic
+                    and column.key in {"occupation_major", "occupation_first_group", "occupation_second_group"}):
+                automatic = comparison.automatic[column.key]
+                cell.fill = PatternFill("solid", fgColor="FFC7CE")
+                cell.comment = Comment(
+                    f"Automatic: {automatic.code} — {automatic.label}\n"
+                    "Red = AI classification differs from automatic classification.",
+                    "Occupation comparison",
+                )
 
     sheet.freeze_panes = "B6"
     output = BytesIO()

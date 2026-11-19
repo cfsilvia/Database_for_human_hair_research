@@ -1,17 +1,5 @@
-document.addEventListener("DOMContentLoaded", function () {
-    document.getElementById("summaryLink").addEventListener("click", function (event) {
-        event.preventDefault();
-        loadParticipationSummary();
-    });
-});
-
-
-// Load current counts and show the summary instead of the participants table.
 async function loadParticipationSummary() {
-    document.getElementById("participantsTableSection").classList.add("hidden");
-    document.getElementById("summarySection").classList.remove("hidden");
     document.getElementById("summaryContent").classList.add("hidden");
-    setActiveSidebarLink("summaryLink");
     const message = document.getElementById("summaryMessage");
     message.textContent = "Loading summary...";
 

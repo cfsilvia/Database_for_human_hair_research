@@ -93,6 +93,27 @@ class ParticipantsExportTests(unittest.TestCase):
             export_participants_table(table)
         self.assertEqual(caught.exception.status_code, 400)
 
+    def test_occupation_difference_fill_comment_and_review(self):
+        table = self.make_table(
+            fixed_columns=[],
+            groups=[{"test": "Occupation", "columns": [
+                {"key": "occupation_major", "label": "Major group"},
+                {"key": "occupation_review", "label": "Review"},
+            ]}],
+            rows=[{"subject_id": 12, "occupation_major": "2", "occupation_review": "נדרשת בדיקה"},
+                  {"subject_id": 13, "occupation_major": "2"}],
+            occupation_comparisons={"12": {
+                "automatic": {"occupation_major": {"code": "Unknown", "label": "Unknown"}},
+                "different_columns": ["occupation_major"],
+            }},
+        )
+        sheet = self.read_sheet(table)
+        self.assertEqual(sheet["B6"].fill.fgColor.rgb, "00FFC7CE")
+        self.assertIn("Automatic: Unknown", sheet["B6"].comment.text)
+        self.assertEqual(sheet["C6"].value, "נדרשת בדיקה")
+        self.assertIsNone(sheet["C6"].comment)
+        self.assertIsNone(sheet["B7"].fill.patternType)
+
 
 if __name__ == "__main__":
     unittest.main()

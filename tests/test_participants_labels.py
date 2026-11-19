@@ -14,7 +14,272 @@ from app.database.models import (
     QuestionVariant, Response, ResponseValueLabel,
     ParticipantTestScores, QuestionnaireScoringRule,
     WarPeriod,
+    Locality,
+    Occupation,
 )
+
+
+@pytest.fixture(autouse=True)
+def english_locality_reference():
+    with patch("app.analysis.locations.read_english_locality_names", return_value={
+        "rehovot": {"רחובות"},
+        "ambiguous city": {"רחובות", "חדרה"},
+    }):
+        yield
+
+
+@pytest.mark.parametrize("answer,locality_rows,expected", [
+    ("  Town  ", [(1, 11)], 1),
+    (None, [(1, 11)], "Unknown"),
+    ("", [(1, 11)], "Unknown"),
+    ("Other", [(1, 11)], "Unknown"),
+    ("Town", [(1, 11), (2, 22)], "Unknown"),
+    ("Town", [(1, 11), (1, 11)], 1),
+])
+def test_location_lookup(answer, locality_rows, expected):
+    from app.analysis.locations import get_location_values
+
+    engine = create_engine("sqlite://")
+    Base.metadata.create_all(engine)
+    with Session(engine) as db:
+        for district, subdistrict in locality_rows:
+            db.add(Locality(
+                locality_he="Town", district_code=district,
+                district_he="מחוז", subdistrict_code=subdistrict,
+                subdistrict_he="נפה",
+            ))
+        db.commit()
+        result = get_location_values(db, {101: answer})[101]
+        assert result["district_code"] == expected
+        assert result["subdistrict_code"] == (11 if expected == 1 else "Unknown")
+        assert result["district_he"] == ("מחוז" if expected == 1 else "Unknown")
+        assert result["subdistrict_he"] == ("נפה" if expected == 1 else "Unknown")
+        assert not db.new and not db.dirty
+    engine.dispose()
+
+
+@pytest.mark.parametrize("answer,names,expected", [
+    ("Kiryat Ono", [("קריית אונו", 5, 51)], (5, 51)),
+    (" QIRYAT ONO ", [("קריית אונו", 5, 51)], (5, 51)),
+    ("kiryat-ono", [("קריית אונו", 5, 51)], (5, 51)),
+    ("Rehovot", [("רחובות", 4, 44)], (4, 44)),
+    ("REHOVOT", [("רחובות", 4, 44)], (4, 44)),
+    ("Unknown city", [("רחובות", 4, 44)], None),
+    ("ambiguous city", [("רחובות", 4, 44), ("חדרה", 3, 32)], None),
+    ("מודיעין", [("מודיעין-מכבים-רעות", 4, 43)], (4, 43)),
+    ("פרדס חנה", [("פרדס חנה-כרכור", 3, 32)], (3, 32)),
+    ("תל אביב", [("תל אביב -יפו", 5, 51)], (5, 51)),
+    ("יפו", [("תל אביב -יפו", 5, 51)], (5, 51)),
+    ("הרצליה", [("הרצלייה", 5, 51)], (5, 51)),
+    (" תל   אביב - יפו ", [("תל אביב -יפו", 5, 51)], (5, 51)),
+    ("תל אביב יפו", [("תל אביב -יפו", 5, 51)], (5, 51)),
+    ("תל אביב–יפו", [("תל אביב -יפו", 5, 51)], (5, 51)),
+    ("תל אביב־יפו", [("תל אביב -יפו", 5, 51)], (5, 51)),
+    ("גבעת חיים מאוחד", [("גבעת חיים (מאוחד)", 3, 32)], (3, 32)),
+    ("גבעת חיים", [("גבעת חיים (מאוחד)", 3, 32)], None),
+    ("קיבוץ יקום", [("יקום", 4, 41)], (4, 41)),
+    ("מושב מגדים", [("מגדים", 3, 32)], (3, 32)),
+    ("יפו", [("יפו", 1, 11), ("תל אביב -יפו", 5, 51)], (1, 11)),
+    ("A-B", [("A-B", 1, 11), ("A B", 2, 22)], (1, 11)),
+    ("A (B)", [("A-B", 1, 11), ("A B", 2, 22)], None),
+    ("A (B)", [("A-B", 1, 11), ("A B", 1, 11)], (1, 11)),
+    ("חדרה/רחובות", [("חדרה", 3, 32), ("רחובות", 4, 44)], None),
+    ("תל אביב ויפו", [("תל אביב -יפו", 5, 51)], None),
+    ("הרצליה", [], None),
+])
+def test_location_name_variants(answer, names, expected):
+    from app.analysis.locations import get_location_values
+
+    engine = create_engine("sqlite://")
+    Base.metadata.create_all(engine)
+    with Session(engine) as db:
+        for name, district, subdistrict in names:
+            db.add(Locality(
+                locality_he=name, district_code=district, district_he="מחוז",
+                subdistrict_code=subdistrict, subdistrict_he="נפה",
+            ))
+        db.commit()
+        result = get_location_values(db, {101: answer})[101]
+        if expected is None:
+            assert set(result.values()) == {"Unknown"}
+        else:
+            assert (result["district_code"], result["subdistrict_code"]) == expected
+            assert result["district_he"] == "מחוז"
+            assert result["subdistrict_he"] == "נפה"
+        assert not db.new and not db.dirty
+    engine.dispose()
+
+
+@pytest.mark.parametrize("answer,names,expected_name", [
+    ("הרצליהה", [("הרצלייה", 5, 51)], "הרצלייה"),
+    ("קרית אונו", [("קריית אונו", 5, 51), ("רחובות", 4, 44)], "קריית אונו"),
+    ("רלובות", [("רחובות", 4, 44)], "רחובות"),
+    ("Rehvoot", [("רחובות", 4, 44)], "רחובות"),
+    ("abcdefgx", [("abcdefgh", 1, 11), ("abcdefgy", 2, 22)], None),
+    ("קרית אונו", [("קריית אונו", 5, 51), ("קריית אונו", 4, 44)], None),
+    ("xyz", [("xyza", 1, 11)], None),
+    ("unrelated", [("Town", 1, 11)], None),
+    ("abcd", [("abcde", 1, 11)], "abcde"),
+    ("abce", [("abcd", 1, 11)], None),
+    ("abcdefghij", [("abcdefghiX", 1, 11), ("abcdefghXY", 2, 22)], "abcdefghiX"),
+    ("abcd", [("abcdX", 1, 11), ("abcY", 2, 22)], "abcdX"),
+    ("חדרה/רחובות", [("חדרה רחובות", 1, 11)], None),
+])
+def test_approximate_locality_matches(answer, names, expected_name):
+    from app.analysis.locations import get_location_values
+
+    engine = create_engine("sqlite://")
+    Base.metadata.create_all(engine)
+    with Session(engine) as db:
+        for name, district, subdistrict in names:
+            db.add(Locality(
+                locality_he=name, district_code=district, district_he="מחוז",
+                subdistrict_code=subdistrict, subdistrict_he="נפה",
+            ))
+        db.commit()
+        result = get_location_values(db, {101: answer})[101]
+        if expected_name is None:
+            assert set(result.values()) == {"Unknown"}
+        else:
+            assert result["is_approximate"] is True
+            assert result["matched_locality"] == expected_name
+            expected = next(row for row in names if row[0] == expected_name)
+            assert (result["district_code"], result["subdistrict_code"]) == expected[1:]
+        assert not db.new and not db.dirty
+    engine.dispose()
+
+
+@pytest.mark.parametrize("answer", [
+    'גואה', 'גואה (הודו)', 'בחו"ל', 'חו"ל', 'בחו״ל', 'חול', 'חו"ל (ארה"ב)', 'ונציה',
+    'Goa', 'Venice', 'Abroad',
+])
+def test_overseas_location_codes_and_labels(answer):
+    from app.analysis.locations import get_location_values
+
+    engine = create_engine("sqlite://")
+    Base.metadata.create_all(engine)
+    with Session(engine) as db:
+        result = get_location_values(db, {101: answer})[101]
+        assert result == {
+            "district_code": 0, "district_he": 'חו"ל',
+            "subdistrict_code": 0, "subdistrict_he": 'חו"ל',
+        }
+        assert not db.new and not db.dirty
+    engine.dispose()
+
+
+@pytest.mark.parametrize("answer,code,subdistrict,district_he,subdistrict_he", [
+    ("Town", 6, 61, "הדרום", "אשקלון"),
+    ("Rehovot", 6, 61, "הדרום", "אשקלון"),
+    ("Towwn", 6, 61, "הדרום", "אשקלון"),
+    ('בחו"ל', 0, 0, 'חו"ל', 'חו"ל'),
+])
+def test_table_location_group_and_labels(answer, code, subdistrict, district_he, subdistrict_he):
+    with patch.dict(os.environ, {"DATABASE_URL": "sqlite://"}):
+        from app.main import get_participants_table
+
+    engine = create_engine("sqlite://")
+    Base.metadata.create_all(engine)
+    with Session(engine) as db:
+        db.add_all([
+            Participant(id=1, subject_id=101),
+            Participant(id=2, subject_id=102),
+            Questionnaire(id=1, code="first-questionnaire", name="First"),
+            CanonicalQuestion(id=313, questionnaire_id=1, code="DEMOG_HEALTH_12",
+                              test_psicolog="demog-health", item_order=12),
+            QuestionVariant(id=612, canonical_question_id=313, questionnaire_id=1,
+                            question_number="Q10", gender_form="male", question="Locality"),
+            QuestionnaireSession(id=1, participant_id=1, questionnaire_id=1),
+            Response(session_id=1, question_variant_id=612, value_text=answer),
+            Locality(locality_he=("רחובות" if answer == "Rehovot" else "Town"),
+                     district_code=6, district_he="הדרום",
+                     subdistrict_code=61, subdistrict_he="אשקלון"),
+        ])
+        db.commit()
+        table = get_participants_table(db)
+        groups = [group["test"] for group in table["groups"]]
+        assert groups[:3] == ["Demographics", "Location", "Occupation"]
+        assert [column["key"] for column in table["groups"][0]["columns"]] == [
+            "canonical_313",
+        ]
+        assert [column["key"] for column in table["groups"][1]["columns"]] == [
+            "location_district", "location_subdistrict",
+        ]
+        rows = {row["subject_id"]: row for row in table["rows"]}
+        assert rows[101]["location_district"] == code
+        assert rows[101]["location_subdistrict"] == subdistrict
+        assert rows[101]["canonical_313"] == answer
+        assert rows[101]["location_is_approximate"] == (answer == "Towwn")
+        assert rows[101]["location_matched_name"] == ("Town" if answer == "Towwn" else "")
+        assert table["answer_labels"]["101"]["location_district"] == district_he
+        assert table["answer_labels"]["101"]["location_subdistrict"] == subdistrict_he
+        assert rows[102]["location_district"] == "Unknown"
+        assert rows[102]["location_subdistrict"] == "Unknown"
+        assert not db.new and not db.dirty
+    engine.dispose()
+
+
+@pytest.mark.parametrize("gender,answer,expected", [
+    ("male", "סטודנט", ("Y", "Y2", "Y24")),
+    ("female", "סטודנטית", ("Y", "Y2", "Y24")),
+    ("female", "Unknown profession", ("Unknown",) * 3),
+])
+def test_table_occupation_columns_and_labels(gender, answer, expected):
+    with patch.dict(os.environ, {"DATABASE_URL": "sqlite://"}):
+        from app.main import get_participants_table
+
+    engine = create_engine("sqlite://")
+    Base.metadata.create_all(engine)
+    with Session(engine) as db:
+        db.add_all([
+            Participant(id=1, subject_id=101),
+            Participant(id=2, subject_id=102),
+            Questionnaire(id=1, code="first-questionnaire", name="First"),
+            CanonicalQuestion(id=303, questionnaire_id=1, code="OCCUPATION",
+                              test_psicolog="demog-health", item_order=2),
+            QuestionVariant(id=602, canonical_question_id=303, questionnaire_id=1,
+                            question_number="Q2", gender_form=gender,
+                            question="?מהו העיסוק שלך"),
+            QuestionnaireSession(id=1, participant_id=1, questionnaire_id=1),
+            Response(session_id=1, question_variant_id=602, value_text=answer),
+            Occupation(occupation_code="Y242", occupation_he="Students",
+                       major_code="Y", major_group_he="ללא סיווג משלח יד",
+                       first_group_code="Y2", first_group_he="אינם משתתפים בכוח העבודה שלא עבדו",
+                       second_group_code="Y24", second_group_he="תלמידים וסטודנטים"),
+        ])
+        db.commit()
+
+        table = get_participants_table(db)
+
+        groups = [group["test"] for group in table["groups"]]
+        assert groups[:3] == ["Demographics", "Location", "Occupation"]
+        assert [column["key"] for column in table["groups"][0]["columns"]] == [
+            "canonical_303",
+        ]
+        columns = table["groups"][2]["columns"]
+        assert [column["key"] for column in columns] == [
+            "occupation_major", "occupation_first_group", "occupation_second_group",
+            "occupation_source", "occupation_review",
+        ]
+        assert [column["label"] for column in columns] == [
+            "Major group", "First group", "Second group",
+            "Classification source", "Occupation review",
+        ]
+        rows = {row["subject_id"]: row for row in table["rows"]}
+        keys = [column["key"] for column in columns[:3]]
+        assert tuple(rows[101][key] for key in keys) == expected
+        assert all(rows[102][key] == "Unknown" for key in keys)
+        assert rows[101]["canonical_303"] == answer
+        if expected[0] != "Unknown":
+            labels = table["answer_labels"]["101"]
+            assert [labels[key] for key in keys] == [
+                "ללא סיווג משלח יד", "אינם משתתפים בכוח העבודה שלא עבדו",
+                "תלמידים וסטודנטים",
+            ]
+        else:
+            assert not any(key in table["answer_labels"].get("101", {}) for key in keys)
+        assert not db.new and not db.dirty
+    engine.dispose()
 
 
 @pytest.mark.parametrize("session_dates,expected", [
@@ -156,7 +421,8 @@ def test_table_labels_follow_selected_response_and_keep_original_values():
         db.commit()
 
         table = get_participants_table(db)
-        assert table["groups"][0]["columns"][0]["canonical_code"] == "q1"
+        pss_group = next(group for group in table["groups"] if group["test"] == "PSS")
+        assert pss_group["columns"][0]["canonical_code"] == "q1"
         row = table["rows"][0]
         assert row["canonical_1"] == row["canonical_2"] == 0
         assert row["canonical_3"] == 8

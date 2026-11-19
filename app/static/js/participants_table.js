@@ -2,25 +2,33 @@ let participantsTableData = null;
 let participantsTableView = null;
 let participantsTableSaving = false;
 let participantsTableSort = null;
+const participantsColumnWidths = new Map();
+const participantsGroupHeaderObserver = new ResizeObserver(([entry]) => {
+    entry.target.closest("table").style.setProperty(
+        "--participants-group-header-height",
+        `${entry.target.getBoundingClientRect().height}px`
+    );
+});
+const originalScoreRanges = new Map();
+let appliedParticipantsConditions = [];
+let participantsFilterColumns = [];
+const participantsConditionOptions = [
+    ["", "Show for everyone"],
+    ["contains", "Contains"],
+    ["equals", "Equals"],
+    ["not_equals", "Does not equal"],
+    ["not_contains", "Does not contain"],
+    ["empty", "Is empty"],
+    ["not_empty", "Is not empty"],
+    ["greater_than", "Greater than"],
+    ["less_than", "Less than"],
+];
 const selectedParticipantColumns = new Set();
 
 
 document.addEventListener(
     "DOMContentLoaded",
     function () {
-
-        const participantsLink =
-            document.getElementById(
-                "participantsLink"
-            );
-
-        participantsLink.addEventListener(
-            "click",
-            function (event) {
-                event.preventDefault();
-                loadParticipantsTable();
-            }
-        );
 
         setupParticipantsFilters();
 
@@ -35,15 +43,36 @@ document.addEventListener(
 
         document.getElementById("showAnswerLabels").addEventListener(
             "change",
-            applyParticipantsFilters
+            saveParticipantsView
         );
 
         document.getElementById("saveParticipantsTable").addEventListener(
             "click",
             saveParticipantsTable
         );
+        document.getElementById("saveScoreChartPdf").addEventListener("click", () => {
+            window.print();
+        });
+        showHomepageView();
     }
 );
+
+
+function showHomepageView() {
+    const view = new URLSearchParams(window.location.search).get("view");
+
+    if (view === "participants") {
+        setActiveSidebarLink("participantsLink");
+        document.getElementById("participantsTableSection").classList.remove("hidden");
+        window.addEventListener("popstate", restoreParticipantsView);
+        restoreParticipantsView();
+        loadParticipantsTable();
+    } else if (view === "summary") {
+        setActiveSidebarLink("summaryLink");
+        document.getElementById("summarySection").classList.remove("hidden");
+        loadParticipationSummary();
+    }
+}
 
 
 async function fetchParticipantsTable() {
@@ -64,15 +93,12 @@ async function fetchParticipantsTable() {
 
 async function loadParticipantsTable() {
 
-    document.getElementById("summarySection").classList.add("hidden");
     participantsTableSort = null;
     participantsTableData = null;
     participantsTableView = null;
+    originalScoreRanges.clear();
     updateSaveParticipantsButton();
 
-    const section = document.getElementById(
-        "participantsTableSection"
-    );
     const message = document.getElementById(
         "participantsTableMessage"
     );
@@ -80,25 +106,29 @@ async function loadParticipantsTable() {
         "participantsTable"
     );
 
-    section.classList.remove(
-        "hidden"
-    );
     table.classList.add(
         "hidden"
     );
     message.textContent =
         "Loading participants table...";
 
-    setActiveSidebarLink(
-        "participantsLink"
-    );
-
     try {
 
         const tableData =
             await fetchParticipantsTable();
 
-        const firstTests = ["demog-health", "trauma-checklist", "PCL"];
+        for (const group of tableData.groups) {
+            for (const column of group.columns) {
+                for (const range of column.interpretation_ranges || []) {
+                    range.label = (range.label || "").replace(/\s*\(\s*\d+(?:\.\d+)?\s*\)/g, "").trim();
+                }
+                if (column.interpretation_ranges?.length) {
+                    originalScoreRanges.set(column.key, { column, ranges: column.interpretation_ranges });
+                }
+            }
+        }
+
+        const firstTests = ["Demographics", "Location", "Occupation", "trauma-checklist", "PCL"];
         tableData.groups = [
             ...firstTests.flatMap(test => tableData.groups.filter(group => group.test === test)),
             ...tableData.groups.filter(group => !firstTests.includes(group.test)),
@@ -111,11 +141,12 @@ async function loadParticipantsTable() {
             tableData.groups
         );
 
-        applyParticipantsFilters();
+        restoreParticipantsView();
 
         table.classList.remove(
             "hidden"
         );
+        initializeParticipantsColumnWidths(table);
 
     } catch (error) {
 
@@ -131,37 +162,31 @@ async function loadParticipantsTable() {
 
 function setupParticipantsFilters() {
 
-    const filterIds = [
-        "participantSubjectFilter",
-        "answeredQuestionnaire1Filter",
-        "answeredQuestionnaire2Filter",
-        "answeredBothFilter",
-        "columnFilter",
-        "conditionFilter",
-        "filterValue",
-        "testGroupFilter",
-        "hiddenColumnsFilter",
-        "hideEmptyColumnsFilter",
-    ];
+    document.getElementById("showBothQuestionnairesParticipants").addEventListener("click", event => {
+        const button = event.currentTarget;
+        button.setAttribute("aria-pressed", button.getAttribute("aria-pressed") !== "true");
+        saveParticipantsView();
+    });
 
-    for (const filterId of filterIds) {
+    addParticipantsCondition();
+    document.getElementById("addParticipantsCondition").addEventListener("click", () => {
+        addParticipantsCondition();
+    });
+    document.getElementById("participantsFilterForm").addEventListener("submit", event => {
+        event.preventDefault();
+        appliedParticipantsConditions = Array.from(
+            document.querySelectorAll(".participants-condition-row")
+        ).map(row => ({
+            key: row.querySelector(".participants-condition-column").value,
+            condition: row.querySelector(".participants-condition-operator").value,
+            value: row.querySelector("input").value.trim(),
+        })).filter(item => item.key && item.condition &&
+            (item.value || ["empty", "not_empty"].includes(item.condition)));
+        saveParticipantsView();
+    });
 
-        const element = document.getElementById(
-            filterId
-        );
-
-        if (!element) {
-            continue;
-        }
-
-        element.addEventListener(
-            "input",
-            applyParticipantsFilters
-        );
-        element.addEventListener(
-            "change",
-            applyParticipantsFilters
-        );
+    for (const id of ["testGroupFilter", "hideEmptyColumnsFilter"]) {
+        document.getElementById(id).addEventListener("change", saveParticipantsView);
     }
 
     const clearButton = document.getElementById(
@@ -188,20 +213,141 @@ function setupParticipantsFilters() {
 }
 
 
-function populateColumnFilter(fixedColumns, groups) {
+function saveParticipantsView() {
+    applyParticipantsFilters();
+    recordParticipantsView();
+}
 
-    const columnFilter = document.getElementById(
-        "columnFilter"
-    );
 
-    if (!columnFilter) {
-        return;
+function recordParticipantsView() {
+    const previous = {
+        answeredBoth: false,
+        conditions: [],
+        testGroup: "",
+        hiddenColumns: [],
+        hideEmpty: false,
+        answerLabels: false,
+        selectedColumns: [],
+        sort: null,
+        columnWidths: [],
+        scoreCutoffs: [],
+        ...(window.history.state?.participantsView ?? window.history.state?.participantsFilters),
+    };
+    const current = {
+        ...previous,
+        answeredBoth: document.getElementById("showBothQuestionnairesParticipants").getAttribute("aria-pressed") === "true",
+        conditions: appliedParticipantsConditions,
+        hideEmpty: shouldHideEmptyColumns(),
+        answerLabels: document.getElementById("showAnswerLabels").checked,
+    };
+    if (participantsTableData) {
+        current.testGroup = document.getElementById("testGroupFilter").value;
+        current.hiddenColumns = [...getHiddenColumnKeys()].sort();
+        current.selectedColumns = [...selectedParticipantColumns].sort();
+        current.sort = participantsTableSort;
+        current.columnWidths = [...participantsColumnWidths].sort(([left], [right]) => left.localeCompare(right));
+        current.scoreCutoffs = Array.from(originalScoreRanges.values())
+            .filter(({ column, ranges }) => column.interpretation_ranges !== ranges)
+            .map(({ column }) => [column.key, column.interpretation_ranges]);
     }
+    if (JSON.stringify(current) !== JSON.stringify(previous)) {
+        window.history.pushState({ participantsView: current }, "");
+    }
+}
 
-    const currentValue = columnFilter.value;
-    columnFilter.innerHTML =
-        "<option value=\"\">Select column</option>";
 
+function restoreParticipantsView() {
+    const view = window.history.state?.participantsView ?? window.history.state?.participantsFilters;
+    appliedParticipantsConditions = view?.conditions ?? [];
+    document.getElementById("showBothQuestionnairesParticipants").setAttribute("aria-pressed", view?.answeredBoth === true);
+    document.getElementById("hideEmptyColumnsFilter").checked = view?.hideEmpty === true;
+    document.getElementById("showAnswerLabels").checked = view?.answerLabels === true;
+    if (!participantsTableData) return;
+
+    const testGroupFilter = document.getElementById("testGroupFilter");
+    testGroupFilter.value = view?.testGroup ?? "";
+    if (testGroupFilter.selectedIndex === -1) testGroupFilter.selectedIndex = 0;
+
+    const hiddenColumns = new Set(view?.hiddenColumns);
+    for (const checkbox of document.querySelectorAll("#hiddenColumnsFilter input[type='checkbox']")) {
+        checkbox.checked = !hiddenColumns.has(checkbox.value);
+    }
+    selectedParticipantColumns.clear();
+    for (const key of view?.selectedColumns ?? []) selectedParticipantColumns.add(key);
+    participantsTableSort = view?.sort ?? null;
+    participantsColumnWidths.clear();
+    for (const [key, width] of view?.columnWidths ?? []) participantsColumnWidths.set(key, width);
+    const scoreCutoffs = new Map(view?.scoreCutoffs);
+    for (const [key, { column, ranges }] of originalScoreRanges) {
+        column.interpretation_ranges = scoreCutoffs.get(key) ?? ranges;
+    }
+    renderAppliedParticipantsConditions();
+    applyParticipantsFilters();
+}
+
+
+function renderAppliedParticipantsConditions() {
+    document.getElementById("participantsFilterRows").replaceChildren();
+    for (const item of appliedParticipantsConditions) {
+        addParticipantsCondition(item);
+    }
+    if (!appliedParticipantsConditions.length) addParticipantsCondition();
+}
+
+
+function addParticipantsCondition(item) {
+    const row = document.createElement("div");
+    row.className = "participants-condition-row";
+    const column = document.createElement("select");
+    column.className = "participants-condition-column";
+    column.setAttribute("aria-label", "Column");
+    populateParticipantsConditionColumns(column);
+    const condition = document.createElement("select");
+    condition.className = "participants-condition-operator";
+    condition.setAttribute("aria-label", "Condition");
+    for (const [key, label] of participantsConditionOptions) {
+        condition.add(new Option(label, key));
+    }
+    const value = document.createElement("input");
+    value.type = "text";
+    value.placeholder = "Filter value";
+    value.setAttribute("aria-label", "Filter value");
+    value.hidden = true;
+    if (item) {
+        column.value = item.key;
+        condition.value = item.condition;
+        value.value = item.value;
+        value.hidden = ["empty", "not_empty"].includes(item.condition);
+    }
+    condition.addEventListener("change", () => {
+        value.hidden = !condition.value || ["empty", "not_empty"].includes(condition.value);
+    });
+    const remove = document.createElement("button");
+    remove.type = "button";
+    remove.className = "secondary-button";
+    remove.textContent = "Remove";
+    remove.addEventListener("click", () => {
+        row.remove();
+        if (!document.getElementById("participantsFilterRows").children.length) {
+            addParticipantsCondition();
+        }
+    });
+    row.append(column, condition, value, remove);
+    document.getElementById("participantsFilterRows").appendChild(row);
+}
+
+
+function populateParticipantsConditionColumns(select) {
+    const currentValue = select.value;
+    select.replaceChildren(new Option("Select column", ""));
+    for (const column of participantsFilterColumns) {
+        select.add(new Option(column.label, column.key));
+    }
+    select.value = currentValue;
+}
+
+
+function populateColumnFilter(fixedColumns, groups) {
     const columns = [
         {
             key: "subject_id",
@@ -221,18 +367,10 @@ function populateColumnFilter(fixedColumns, groups) {
         }
     }
 
-    for (const column of columns) {
-        const option = document.createElement(
-            "option"
-        );
-        option.value = column.key;
-        option.textContent = column.label;
-        columnFilter.appendChild(
-            option
-        );
+    participantsFilterColumns = columns;
+    for (const select of document.querySelectorAll(".participants-condition-column")) {
+        populateParticipantsConditionColumns(select);
     }
-
-    columnFilter.value = currentValue;
 
     populateDisplayColumnControls(
         fixedColumns,
@@ -328,7 +466,7 @@ function populateDisplayColumnControls(fixedColumns, groups, columns) {
                     }
                 }
 
-                applyParticipantsFilters();
+                saveParticipantsView();
             });
 
             hiddenColumnsFilter.appendChild(button);
@@ -350,7 +488,7 @@ function populateDisplayColumnControls(fixedColumns, groups, columns) {
             checkbox.checked = !hiddenValues.has(column.key);
             checkbox.addEventListener(
                 "change",
-                applyParticipantsFilters
+                saveParticipantsView
             );
 
             const text = document.createElement(
@@ -380,8 +518,19 @@ function getDisplayedParticipantsRows(rows, groups) {
         const labels = participantsTableData.answer_labels?.[String(row.subject_id)];
         for (const group of groups) {
             for (const column of group.columns) {
-                const label = labels?.[column.key];
-                if (typeof row[column.key] === "number" &&
+                const categories = getDemographicChart(column)?.categories;
+                let label = categories
+                    ? categories[row[column.key]] : labels?.[column.key];
+
+                if ((column.question || column.label || "").includes("איך נוח לך שהשאלון ינוסח")) {
+                    const wordingLabels = {
+                        0: "לשון זכר",
+                        1: "לשון נקבה",
+                    };
+                    label = wordingLabels[row[column.key]];
+                }
+                if ((typeof row[column.key] === "number" ||
+                     column.key.startsWith("occupation_")) &&
                     typeof label === "string" && label.trim()) {
                     displayedRow[column.key] = label;
                 }
@@ -392,18 +541,25 @@ function getDisplayedParticipantsRows(rows, groups) {
 }
 
 
-function sortParticipantsRows(rows, groups) {
+function sortParticipantsRows(rows, groups, fixedColumns = []) {
     if (!participantsTableSort) {
         return rows;
     }
 
     const { key, direction } = participantsTableSort;
-    if (!groups.some(group => group.columns.some(column => column.key === key))) {
+    if (!fixedColumns.some(column => column.key === key) &&
+        !groups.some(group => group.columns.some(column => column.key === key))) {
         participantsTableSort = null;
         return rows;
     }
 
     return [...rows].sort((left, right) => {
+        if (["questionnaire_1_war", "questionnaire_2_war", "gave_hair"].includes(key)) {
+            const comparison = String(left[key] ?? "").localeCompare(
+                String(right[key] ?? ""), "en", { numeric: true }
+            );
+            return direction === "descending" ? -comparison : comparison;
+        }
         const leftScore = left[key];
         const rightScore = right[key];
         const leftMissing = !Number.isFinite(leftScore);
@@ -441,7 +597,7 @@ function applyParticipantsFilters() {
         filteredRows
     );
 
-    const sortedRows = sortParticipantsRows(filteredRows, groups);
+    const sortedRows = sortParticipantsRows(filteredRows, groups, fixedColumns);
     const displayedRows = getDisplayedParticipantsRows(sortedRows, groups);
     drawParticipantsTable(fixedColumns, groups, displayedRows);
     updateSelectedColumnsButton();
@@ -450,6 +606,7 @@ function applyParticipantsFilters() {
         fixed_columns: fixedColumns,
         groups: groups,
         rows: displayedRows,
+        occupation_comparisons: participantsTableData.occupation_comparisons || {},
         filter_description: getParticipantsFilterDescription(),
     };
     updateSaveParticipantsButton();
@@ -462,11 +619,11 @@ function applyParticipantsFilters() {
 
 
 function updateSaveParticipantsButton() {
+    const disabled = participantsTableSaving || !participantsTableView ||
+        participantsTableView.rows.length === 0;
     const button = document.getElementById("saveParticipantsTable");
-
     if (button) {
-        button.disabled = participantsTableSaving || !participantsTableView ||
-            participantsTableView.rows.length === 0;
+        button.disabled = disabled;
         button.textContent = participantsTableSaving ? "Saving..." : "Save table (.xlsx)";
     }
 }
@@ -571,33 +728,14 @@ async function saveParticipantsTable() {
 
 function getParticipantsFilterDescription() {
     const filters = [];
-    const rowFilters = [
-        ["participantSubjectFilter", "Subject ID contains"],
-        ["answeredQuestionnaire1Filter", "Questionnaire 1"],
-        ["answeredQuestionnaire2Filter", "Questionnaire 2"],
-        ["answeredBothFilter", "Both questionnaires"],
-    ];
-
-    for (const [id, label] of rowFilters) {
-        const value = getFilterValue(id);
-        if (value) {
-            filters.push(`${label}: ${value}`);
-        }
+    if (document.getElementById("showBothQuestionnairesParticipants").getAttribute("aria-pressed") === "true") {
+        filters.push("Answered both questionnaires");
     }
-
-    const columnKey = getFilterValue("columnFilter");
-    const condition = getFilterValue("conditionFilter") || "contains";
-    const value = getFilterValue("filterValue");
-    const needsNoValue = condition === "empty" || condition === "not_empty";
-
-    if (columnKey && (value || needsNoValue)) {
-        const columnSelect = document.getElementById("columnFilter");
-        const conditionSelect = document.getElementById("conditionFilter");
-        const columnLabel = columnSelect.selectedOptions[0].textContent;
-        const conditionLabel = conditionSelect.selectedOptions[0].textContent;
-        filters.push(
-            `${columnLabel}: ${conditionLabel}${needsNoValue ? "" : ` ${value}`}`
-        );
+    for (const item of appliedParticipantsConditions) {
+        const columnLabel = participantsFilterColumns.find(column => column.key === item.key)?.label || item.key;
+        const conditionLabel = participantsConditionOptions.find(([key]) => key === item.condition)[1];
+        const needsNoValue = ["empty", "not_empty"].includes(item.condition);
+        filters.push(`${columnLabel}: ${conditionLabel}${needsNoValue ? "" : ` ${item.value}`}`);
     }
 
     const test = getFilterValue("testGroupFilter");
@@ -730,69 +868,13 @@ function getVisibleGroups(groups, rows) {
 
 
 function rowMatchesParticipantsFilters(rowData) {
-
-    const subjectFilter = getFilterValue(
-        "participantSubjectFilter"
+    if (document.getElementById("showBothQuestionnairesParticipants").getAttribute("aria-pressed") === "true" &&
+        rowData.answered_both_questionnaires !== "Yes") {
+        return false;
+    }
+    return appliedParticipantsConditions.every(item =>
+        matchesColumnCondition(rowData[item.key], item.condition, item.value)
     );
-
-    if (
-        subjectFilter &&
-        !normalizeFilterText(rowData.subject_id).includes(
-            normalizeFilterText(subjectFilter)
-        )
-    ) {
-        return false;
-    }
-
-    if (!matchesSelectFilter(
-        rowData,
-        "answered_questionnaire_1",
-        "answeredQuestionnaire1Filter"
-    )) {
-        return false;
-    }
-
-    if (!matchesSelectFilter(
-        rowData,
-        "answered_questionnaire_2",
-        "answeredQuestionnaire2Filter"
-    )) {
-        return false;
-    }
-
-    if (!matchesSelectFilter(
-        rowData,
-        "answered_both_questionnaires",
-        "answeredBothFilter"
-    )) {
-        return false;
-    }
-
-    const columnKey = getFilterValue(
-        "columnFilter"
-    );
-
-    if (!columnKey) {
-        return true;
-    }
-
-    return matchesColumnCondition(
-        rowData[columnKey],
-        getFilterValue("conditionFilter") || "contains",
-        getFilterValue("filterValue")
-    );
-}
-
-
-function matchesSelectFilter(rowData, rowKey, filterId) {
-
-    const selectedValue = getFilterValue(filterId);
-
-    if (!selectedValue) {
-        return true;
-    }
-
-    return String(rowData[rowKey] ?? "") === selectedValue;
 }
 
 
@@ -871,52 +953,15 @@ function updateParticipantsTableMessage(filteredCount, totalCount) {
         return;
     }
 
-    if (totalCount === 0) {
-        message.textContent =
-            "No participants were found.";
-        return;
-    }
-
-    if (filteredCount === totalCount) {
-        message.textContent = "";
-        return;
-    }
-
-    message.textContent =
-        `Showing ${filteredCount} of ${totalCount} participants.`;
+    message.textContent = `Showing ${filteredCount} of ${totalCount} participants.`;
 }
 
 
 function clearParticipantsFilters() {
-
-    const filterIds = [
-        "participantSubjectFilter",
-        "answeredQuestionnaire1Filter",
-        "answeredQuestionnaire2Filter",
-        "answeredBothFilter",
-        "columnFilter",
-        "filterValue",
-    ];
-
-    for (const filterId of filterIds) {
-        const element = document.getElementById(
-            filterId
-        );
-
-        if (element) {
-            element.value = "";
-        }
-    }
-
-    const conditionFilter = document.getElementById(
-        "conditionFilter"
-    );
-
-    if (conditionFilter) {
-        conditionFilter.value = "contains";
-    }
-
-    applyParticipantsFilters();
+    appliedParticipantsConditions = [];
+    document.getElementById("showBothQuestionnairesParticipants").setAttribute("aria-pressed", "false");
+    renderAppliedParticipantsConditions();
+    saveParticipantsView();
 }
 
 
@@ -955,6 +1000,7 @@ function setParticipantColumnsSelected(keys, selected) {
         }
     }
     updateSelectedColumnsButton();
+    recordParticipantsView();
 }
 
 
@@ -978,7 +1024,7 @@ function showSelectedParticipantsColumns() {
     for (const checkbox of document.querySelectorAll("#hiddenColumnsFilter input[type='checkbox']")) {
         checkbox.checked = selectedParticipantColumns.has(checkbox.value);
     }
-    applyParticipantsFilters();
+    saveParticipantsView();
 }
 
 
@@ -1013,7 +1059,7 @@ function showAllParticipantsColumns() {
         hideEmptyColumnsFilter.checked = false;
     }
 
-    applyParticipantsFilters();
+    saveParticipantsView();
 }
 
 
@@ -1077,6 +1123,19 @@ function appendQuestionHeaderText(header, column) {
 
 
 function getDemographicChart(column) {
+    if (column.key === "gave_hair") {
+        return {
+            label: "Gave hair",
+            categories: { Yes: "Yes", No: "No", Wait: "Wait" },
+            method: "Reported hair donation status: Yes, No, or Wait. Missing values and unrecognized answers are counted separately.",
+        };
+    }
+    if ((column.question || column.label || "").includes("מין בעת הלידה")) {
+        return {
+            label: "Sex at birth",
+            categories: { 1: "Male", 0: "Female" },
+        };
+    }
     return {
         DEMOG_HEALTH_04: { label: "Age (years)", unit: "years" },
         DEMOG_HEALTH_09: { label: "Height (cm)", unit: "cm" },
@@ -1086,12 +1145,26 @@ function getDemographicChart(column) {
 
 
 function getDemographicChartSlices(column, data, population) {
-    const rows = data.rows.filter(row => row.answered_both_questionnaires === "Yes");
+    const rows = data.rows;
+    const categories = getDemographicChart(column).categories;
+    if (categories) {
+        const counts = new Map(Object.values(categories).map(label => [label, 0]));
+        for (const row of rows) {
+            const value = row[column.key];
+            const label = categories[value] || (value == null || value === ""
+                ? "Missing value" : "Unclassified");
+            counts.set(label, (counts.get(label) || 0) + 1);
+        }
+        return {
+            total: rows.length,
+            slices: [...counts].map(([label, count]) => ({ label, count })),
+        };
+    }
     const unit = getDemographicChart(column).unit;
     const binStarts = new Set();
     for (const row of population.rows) {
         const value = row[column.key];
-        if (row.answered_both_questionnaires === "Yes" && Number.isFinite(value)) {
+        if (Number.isFinite(value)) {
             binStarts.add(Math.floor(value / 5) * 5);
         }
     }
@@ -1114,11 +1187,11 @@ function getDemographicChartSlices(column, data, population) {
 }
 
 
-function getScoreChartSlices(column, data) {
+function getScoreChartSlices(column, data, population = data) {
     if (getDemographicChart(column)) {
-        return getDemographicChartSlices(column, data, participantsTableData);
+        return getDemographicChartSlices(column, data, population);
     }
-    const rows = data.rows.filter(row => row.answered_both_questionnaires === "Yes");
+    const rows = data.rows;
     const categories = column.interpretation_ranges || [];
     const missingLabel = column.missing_score_label || "Missing score";
     const counts = new Map();
@@ -1131,7 +1204,7 @@ function getScoreChartSlices(column, data) {
         let label = missingLabel;
         if (typeof score === "number" && Number.isFinite(score)) {
             label = categories.length
-                ? data.score_interpretations?.[String(row.subject_id)]?.[column.key] || "Unclassified"
+                ? getScoreInterpretation(score, categories) || "Unclassified"
                 : String(score);
         }
         counts.set(label, (counts.get(label) || 0) + 1);
@@ -1154,18 +1227,24 @@ function getScoreChartSlices(column, data) {
 function showScoreChart(column, testName, opener) {
     const dialog = document.getElementById("scoreChartDialog");
     const demographic = getDemographicChart(column);
-    const { total } = getScoreChartSlices(column, participantsTableData);
+    const chartData = {
+        ...participantsTableData,
+        rows: participantsTableData.rows.filter(rowMatchesParticipantsFilters),
+    };
+    const { total } = getScoreChartSlices(column, chartData);
     const ranges = column.interpretation_ranges || [];
     document.getElementById("scoreChartTitle").textContent = demographic
         ? demographic.label : `${testName} — ${column.label}`;
     document.getElementById("scoreChartDescription").textContent =
-        demographic ? "Distribution of reported values among participants who answered both questionnaires."
+        demographic ? "Distribution of reported values among participants matching the applied table filters."
             : column.description?.trim() || "No subscale description is available";
     const method = column.scoring_method === "average" ? "Average" : "Sum";
     const limits = column.min_score != null && column.max_score != null
         ? ` Possible scores: ${column.min_score}–${column.max_score}.` : "";
     document.getElementById("scoreChartMethod").textContent = demographic
-        ? `Unit: ${demographic.unit}. Interval width: 5 ${demographic.unit}; lower bound included, upper bound excluded. Missing or nonnumeric values are included in totals as Missing value.`
+        ? demographic.categories
+            ? demographic.method || "1 = Male; 0 = Female. Missing values and unrecognized answers are counted separately."
+            : `Unit: ${demographic.unit}. Interval width: 5 ${demographic.unit}; lower bound included, upper bound excluded. Missing or nonnumeric values are included in totals as Missing value.`
         : `Calculation: ${method}.${limits}`;
     const rangeList = document.getElementById("scoreChartRanges");
     rangeList.replaceChildren();
@@ -1176,27 +1255,28 @@ function showScoreChart(column, testName, opener) {
         rangeList.appendChild(item);
     }
     document.getElementById("scoreChartPopulation").textContent = total
-        ? `${total} participants who answered both questionnaires; table filters do not affect this chart. `
+        ? `${total} participants matching the applied table filters. `
             + (demographic ? "Grouped frequency bars show participant counts and percentages."
                 : ranges.length ? "Pie chart grouped by cutoff / threshold categories."
                 : "Bar plot by exact score value. Bar length shows the number of participants; no cutoff / threshold categories are defined.")
-        : "No participants answered both questionnaires.";
+        : "No participants match the applied table filters.";
     const groups = document.getElementById("scoreChartGroups");
     groups.replaceChildren();
-    for (const [title, wording] of [["All participants", null], ["Female wording", "female"], ["Male wording", "male"]]) {
+    const sexColumn = participantsTableData.groups.flatMap(group => group.columns)
+        .find(candidate => getDemographicChart(candidate)?.label === "Sex at birth");
+    for (const [title, sex] of [["All participants", null], ["Female (sex at birth)", "0"], ["Male (sex at birth)", "1"]]) {
         const data = {
-            ...participantsTableData,
-            rows: participantsTableData.rows.filter(row => !wording || row.wording_form === wording),
+            ...chartData,
+            rows: chartData.rows.filter(row => sex === null || String(row[sexColumn?.key]) === sex),
         };
-        drawScoreChartGroup(groups, column, data, title);
+        drawScoreChartGroup(groups, column, data, title, chartData);
     }
-    const ungrouped = participantsTableData.rows.filter(row =>
-        row.answered_both_questionnaires === "Yes"
-        && !["female", "male"].includes(row.wording_form)
+    const ungrouped = chartData.rows.filter(row =>
+        !["0", "1"].includes(String(row[sexColumn?.key]))
     ).length;
     if (ungrouped) {
         document.getElementById("scoreChartPopulation").textContent +=
-            ` ${ungrouped} participants have unrecorded or mixed wording and appear only in the overall chart.`;
+            ` ${ungrouped} participants have missing or unrecognized sex at birth and appear only in the overall chart.`;
     }
     dialog.addEventListener("close", () => {
         if (opener.isConnected) opener.focus();
@@ -1205,8 +1285,8 @@ function showScoreChart(column, testName, opener) {
 }
 
 
-function drawScoreChartGroup(container, column, data, title) {
-    const { total, slices } = getScoreChartSlices(column, data);
+function drawScoreChartGroup(container, column, data, title, population = data) {
+    const { total, slices } = getScoreChartSlices(column, data, population);
     const ranges = column.interpretation_ranges || [];
     const missingLabel = getDemographicChart(column) ? "Missing value"
         : column.missing_score_label || "Missing score";
@@ -1223,7 +1303,7 @@ function drawScoreChartGroup(container, column, data, title) {
     if (!total) {
         pie.hidden = true;
         const message = document.createElement("p");
-        message.textContent = "No participants in this group answered both questionnaires.";
+        message.textContent = "No participants in this group match the applied table filters.";
         section.appendChild(message);
         return;
     }
@@ -1278,6 +1358,86 @@ function appendScoreChartButton(header, column, testName) {
         ? `View chart for ${getDemographicChart(column).label}`
         : `View chart for ${testName} — ${column.label}`);
     button.addEventListener("click", () => showScoreChart(column, testName, button));
+    (header.querySelector(".question-text") || header).appendChild(button);
+}
+
+
+function showScoreCutoffs(column, testName) {
+    const original = originalScoreRanges.get(column.key).ranges;
+    const dialog = document.getElementById("scoreCutoffDialog");
+    const form = document.getElementById("scoreCutoffForm");
+    const fields = document.getElementById("scoreCutoffFields");
+    const error = document.getElementById("scoreCutoffError");
+    document.getElementById("scoreCutoffTitle").textContent = `${testName} - ${column.label}: cutoffs`;
+    fields.replaceChildren();
+    error.textContent = "";
+    const inputs = column.interpretation_ranges.map(range => {
+        const row = document.createElement("tr");
+        const label = document.createElement("th");
+        label.scope = "row";
+        label.dir = "auto";
+        label.textContent = range.label || "Unlabeled category";
+        row.appendChild(label);
+        const bounds = {};
+        for (const [key, title] of [["min", "Minimum"], ["max", "Maximum"]]) {
+            const cell = document.createElement("td");
+            const input = document.createElement("input");
+            input.type = "number";
+            input.step = "any";
+            input.required = true;
+            input.value = range[key] ?? "";
+            input.setAttribute("aria-label", `${label.textContent}: ${title}`);
+            cell.appendChild(input);
+            row.appendChild(cell);
+            bounds[key] = input;
+        }
+        fields.appendChild(row);
+        return bounds;
+    });
+    function applyRanges(ranges) {
+        column.interpretation_ranges = JSON.stringify(ranges) === JSON.stringify(original) ? original : ranges;
+        dialog.close();
+        saveParticipantsView();
+        const button = [...document.querySelectorAll(".score-cutoff-button")]
+            .find(item => item.dataset.scoreKey === column.key);
+        button?.focus();
+    }
+    form.onsubmit = event => {
+        event.preventDefault();
+        const ranges = column.interpretation_ranges.map((range, index) => ({
+            ...range,
+            min: inputs[index].min.valueAsNumber,
+            max: inputs[index].max.valueAsNumber,
+        }));
+        if (ranges.some(range => !Number.isFinite(range.min) ||
+            !Number.isFinite(range.max) || range.min > range.max)) {
+            error.textContent = "Enter numeric boundaries with minimum less than or equal to maximum.";
+            return;
+        }
+        const sorted = [...ranges].sort((left, right) => left.min - right.min);
+        if (sorted.some((range, index) => index > 0 && range.min <= sorted[index - 1].max)) {
+            error.textContent = "Ranges must not overlap. Both minimum and maximum are included.";
+            return;
+        }
+        applyRanges(ranges);
+    };
+    document.getElementById("resetScoreCutoffs").onclick = () => {
+        applyRanges(original);
+    };
+    dialog.showModal();
+}
+
+
+function appendScoreCutoffButton(header, column, testName) {
+    if (!column.interpretation_ranges?.length) return;
+    const custom = originalScoreRanges.get(column.key).ranges !== column.interpretation_ranges;
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "secondary-button score-chart-button score-cutoff-button";
+    button.dataset.scoreKey = column.key;
+    button.textContent = custom ? "Edit cutoffs (custom)" : "Edit cutoffs";
+    button.setAttribute("aria-label", `${button.textContent} for ${testName} - ${column.label}`);
+    button.addEventListener("click", () => showScoreCutoffs(column, testName));
     header.querySelector(".question-text").appendChild(button);
 }
 
@@ -1296,9 +1456,13 @@ function appendScoreSortButton(header, column, testName) {
             ? "M12 20V4m-6 6 6-6 6 6"
             : "M8 20V4m-4 4 4-4 4 4M16 4v16m-4-4 4 4 4-4";
     button.innerHTML = `<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" focusable="false"><path d="${arrowPath}" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+    const isTextColumn = ["questionnaire_1_war", "questionnaire_2_war", "gave_hair"].includes(column.key);
+    const sortOrder = isTextColumn
+        ? (nextDirection === "descending" ? "Z to A" : "A to Z")
+        : (nextDirection === "descending" ? "highest first" : "lowest first");
     button.setAttribute(
         "aria-label",
-        `Sort ${testName} - ${column.label}: ${nextDirection === "descending" ? "highest" : "lowest"} first`
+        `Sort ${testName} - ${column.label}: ${sortOrder}`
     );
     button.title = button.getAttribute("aria-label");
     if (direction) {
@@ -1306,12 +1470,28 @@ function appendScoreSortButton(header, column, testName) {
     }
     button.addEventListener("click", () => {
         participantsTableSort = { key: column.key, direction: nextDirection };
-        applyParticipantsFilters();
+        saveParticipantsView();
         const updatedButton = document.getElementById("participantsTableHead")
             .querySelector("[aria-sort] .score-sort-button");
         updatedButton?.focus();
     });
-    header.querySelector(".question-text").appendChild(button);
+    (header.querySelector(".question-text") || header).appendChild(button);
+}
+
+
+function getScoreInterpretation(score, ranges) {
+    if (typeof score !== "number" || !Number.isFinite(score)) {
+        return "";
+    }
+
+    const matches = ranges.filter(range =>
+        range.min != null &&
+        range.max != null &&
+        score >= range.min &&
+        score <= range.max
+    );
+
+    return matches.length === 1 ? matches[0].label || "" : "";
 }
 
 
@@ -1325,10 +1505,10 @@ function appendScoreInterpretation(cell, rowData, column) {
         return;
     }
 
-    const interpretation = participantsTableData
-        ?.score_interpretations
-        ?.[String(rowData.subject_id)]
-        ?.[column.key];
+    const interpretation = getScoreInterpretation(
+        rowData[column.key],
+        column.interpretation_ranges || []
+    );
 
     if (!interpretation) {
         return;
@@ -1343,6 +1523,107 @@ function appendScoreInterpretation(cell, rowData, column) {
 }
 
 
+function applyOccupationComparison(cell, subjectId, columnKey) {
+    const comparison = participantsTableData.occupation_comparisons?.[String(subjectId)];
+    if (!comparison?.different_columns.includes(columnKey)) {
+        return;
+    }
+    const automatic = comparison.automatic[columnKey];
+    cell.classList.add("occupation-difference");
+    cell.title += `\nAutomatic: ${automatic.code} — ${automatic.label}`;
+}
+
+
+function initializeParticipantsColumnWidths(table, resizing = false) {
+    if (!table.offsetWidth) return;
+
+    const handles = [...table.tHead.querySelectorAll(".participants-column-resize")];
+    const naturalWidths = handles.map(handle => handle.parentElement.getBoundingClientRect().width);
+    const widths = handles.map((handle, index) => {
+        const naturalWidth = naturalWidths[index];
+        const width = participantsColumnWidths.get(handle.dataset.columnKey) ?? naturalWidth;
+        handle.dataset.columnIndex = index;
+        handle.setAttribute("aria-valuemin", Math.min(80, Math.floor(naturalWidth), Math.floor(width)));
+        handle.setAttribute("aria-valuemax", Math.max(1200, Math.ceil(naturalWidth), Math.ceil(width)));
+        handle.setAttribute("aria-valuenow", Math.round(width));
+        return width;
+    });
+
+    if (!resizing && !handles.some(handle => participantsColumnWidths.has(handle.dataset.columnKey))) {
+        return;
+    }
+
+    const columns = widths.map(width => {
+        const col = document.createElement("col");
+        col.style.width = `${width}px`;
+        return col;
+    });
+    document.getElementById("participantsTableColumns").replaceChildren(...columns);
+    table.style.width = `${widths.reduce((total, width) => total + width, 0)}px`;
+    table.classList.add("participants-columns-sized");
+    participantsGroupHeaderObserver.observe(table.tHead.rows[0]);
+}
+
+
+function resizeParticipantsColumn(handle, requestedWidth) {
+    const width = Math.min(
+        Number(handle.getAttribute("aria-valuemax")),
+        Math.max(Number(handle.getAttribute("aria-valuemin")), Math.round(requestedWidth))
+    );
+    if (width === Number(handle.getAttribute("aria-valuenow"))) return;
+
+    const table = handle.closest("table");
+    if (!table.classList.contains("participants-columns-sized")) {
+        initializeParticipantsColumnWidths(table, true);
+    }
+    const column = document.getElementById("participantsTableColumns").children[handle.dataset.columnIndex];
+    const change = width - parseFloat(column.style.width);
+    column.style.width = `${width}px`;
+    table.style.width = `${parseFloat(table.style.width) + change}px`;
+    participantsColumnWidths.set(handle.dataset.columnKey, width);
+    handle.setAttribute("aria-valuenow", width);
+}
+
+
+function appendParticipantsColumnResizeHandle(header, key, label) {
+    const handle = document.createElement("div");
+    handle.className = "participants-column-resize";
+    handle.dataset.columnKey = key;
+    handle.tabIndex = 0;
+    handle.setAttribute("role", "separator");
+    handle.setAttribute("aria-orientation", "vertical");
+    handle.setAttribute("aria-label", `Resize ${label} column`);
+    handle.title = `Resize ${label} (drag or use Left and Right arrow keys)`;
+
+    let startX;
+    let startWidth;
+    handle.addEventListener("pointerdown", event => {
+        if (!event.isPrimary || event.button !== 0) return;
+        event.preventDefault();
+        startX = event.clientX;
+        startWidth = header.getBoundingClientRect().width;
+        handle.focus({ preventScroll: true });
+        handle.setPointerCapture(event.pointerId);
+    });
+    handle.addEventListener("pointermove", event => {
+        if (handle.hasPointerCapture(event.pointerId)) {
+            resizeParticipantsColumn(handle, startWidth + event.clientX - startX);
+        }
+    });
+    handle.addEventListener("lostpointercapture", recordParticipantsView);
+    handle.addEventListener("keydown", event => {
+        if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
+        event.preventDefault();
+        const change = event.key === "ArrowLeft" ? -10 : 10;
+        resizeParticipantsColumn(handle, header.getBoundingClientRect().width + change);
+    });
+    handle.addEventListener("keyup", event => {
+        if (event.key === "ArrowLeft" || event.key === "ArrowRight") recordParticipantsView();
+    });
+    header.appendChild(handle);
+}
+
+
 function drawParticipantsTable(fixedColumns, groups, rows) {
 
     fixedColumns = fixedColumns || [];
@@ -1353,7 +1634,13 @@ function drawParticipantsTable(fixedColumns, groups, rows) {
     const tableBody = document.getElementById(
         "participantsTableBody"
     );
+    const table = tableHead.closest("table");
 
+    participantsGroupHeaderObserver.disconnect();
+    table.classList.remove("participants-columns-sized");
+    table.style.removeProperty("width");
+    table.style.removeProperty("--participants-group-header-height");
+    document.getElementById("participantsTableColumns").replaceChildren();
     tableHead.innerHTML = "";
     tableBody.innerHTML = "";
 
@@ -1368,6 +1655,7 @@ function drawParticipantsTable(fixedColumns, groups, rows) {
     participantHeader.classList.add(
         "sticky-column"
     );
+    appendParticipantsColumnResizeHandle(participantHeader, "subject_id", "subject ID");
     groupHeaderRow.appendChild(
         participantHeader
     );
@@ -1381,10 +1669,17 @@ function drawParticipantsTable(fixedColumns, groups, rows) {
         fixedHeader.title =
             column.tooltip || column.label;
         appendColumnSelectionCheckbox(fixedHeader, column, column.label);
+        if (["questionnaire_1_war", "questionnaire_2_war", "gave_hair"].includes(column.key)) {
+            appendScoreSortButton(fixedHeader, column, "Participant");
+        }
+        if (column.key === "gave_hair") {
+            appendScoreChartButton(fixedHeader, column, "Participant");
+        }
         fixedHeader.rowSpan = 2;
         fixedHeader.classList.add(
             "fixed-column-header"
         );
+        appendParticipantsColumnResizeHandle(fixedHeader, column.key, column.label);
         groupHeaderRow.appendChild(
             fixedHeader
         );
@@ -1396,6 +1691,7 @@ function drawParticipantsTable(fixedColumns, groups, rows) {
             document.createElement("th");
         groupHeader.textContent =
             group.test;
+        groupHeader.title = group.test;
         const testColumns = participantsTableData.groups
             .filter(testGroup => testGroup.test === group.test)
             .flatMap(testGroup => testGroup.columns);
@@ -1446,7 +1742,16 @@ function drawParticipantsTable(fixedColumns, groups, rows) {
                 codeHeader.classList.add("score-column-header");
                 appendScoreSortButton(codeHeader, column, group.test);
                 appendScoreChartButton(codeHeader, column, group.test);
+                appendScoreCutoffButton(codeHeader, column, group.test);
+            } else if (
+                ["location_district", "location_subdistrict"].includes(column.key) ||
+                column.key.startsWith("occupation_")
+            ) {
+                appendScoreSortButton(codeHeader, column, group.test);
             } else if (getDemographicChart(column)) {
+                if (getDemographicChart(column).categories) {
+                    appendScoreSortButton(codeHeader, column, group.test);
+                }
                 appendScoreChartButton(codeHeader, column, group.test);
             }
             codeHeader.title =
@@ -1457,6 +1762,7 @@ function drawParticipantsTable(fixedColumns, groups, rows) {
                 "canonical-code-header",
                 colorClass
             );
+            appendParticipantsColumnResizeHandle(codeHeader, column.key, `${group.test} - ${column.label}`);
             codeHeaderRow.appendChild(
                 codeHeader
             );
@@ -1488,6 +1794,9 @@ function drawParticipantsTable(fixedColumns, groups, rows) {
                 document.createElement("td");
             cell.textContent =
                 rowData[column.key] ?? "";
+            if (/^questionnaire_[12]_(started|ended)_at$/.test(column.key)) {
+                cell.textContent = cell.textContent.replace("T", " ");
+            }
             cell.title = cell.textContent;
             row.appendChild(
                 cell
@@ -1502,6 +1811,20 @@ function drawParticipantsTable(fixedColumns, groups, rows) {
                 rowData[column.key] ?? "";
             cell.title = cell.textContent;
             appendScoreInterpretation(cell, rowData, column);
+            applyOccupationComparison(cell, rowData.subject_id, column.key);
+            if (column.key === "occupation_review") {
+                cell.classList.add("occupation-review");
+            }
+            if (["location_district", "location_subdistrict"].includes(column.key) &&
+                rowData[column.key] === "Unknown") {
+                cell.classList.add("unknown-location");
+            }
+            if ((["location_district", "location_subdistrict"].includes(column.key) ||
+                column.canonical_code === "DEMOG_HEALTH_12") &&
+                rowData.location_is_approximate) {
+                cell.classList.add("approximate-location");
+                cell.title += ` — Approximate locality match: ${rowData.location_matched_name}`;
+            }
             cell.classList.add(
                 "participant-answer-cell",
                 column.colorClass
@@ -1515,6 +1838,7 @@ function drawParticipantsTable(fixedColumns, groups, rows) {
             row
         );
     }
+    initializeParticipantsColumnWidths(table);
 }
 
 
@@ -1526,14 +1850,12 @@ function setActiveSidebarLink(activeLinkId) {
         );
 
     for (const link of sidebarLinks) {
-        link.classList.remove(
-            "active"
-        );
+        const active = link.id === activeLinkId;
+        link.classList.toggle("active", active);
+        if (active) {
+            link.setAttribute("aria-current", "page");
+        } else {
+            link.removeAttribute("aria-current");
+        }
     }
-
-    document.getElementById(
-        activeLinkId
-    ).classList.add(
-        "active"
-    );
 }

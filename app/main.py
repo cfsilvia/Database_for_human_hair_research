@@ -9,6 +9,8 @@ from sqlalchemy.orm import Session
 from app.auth import require_login, router as auth_router
 from app.participants_export import router as participants_export_router
 from app.analysis.summary import get_participation_summary
+from app.analysis.locations import get_location_values
+from app.analysis.occupations import add_occupation_values, get_occupation_columns
 from app.database.dependencies import get_db
 from app.database.models import (
     Participant,
@@ -301,6 +303,7 @@ def get_participants_table(db: Session = Depends(get_db)):
         {"key": "answered_questionnaire_1", "label": "Answered questionnaire 1"},
         {"key": "answered_questionnaire_2", "label": "Answered questionnaire 2"},
         {"key": "answered_both_questionnaires", "label": "Answered both questionnaires"},
+        {"key": "gave_hair", "label": "Gave hair"},
     ]
 
     questionnaires = db.execute(
@@ -387,6 +390,22 @@ def get_participants_table(db: Session = Depends(get_db)):
             "parent_question": q.parent_question,
         })
     groups = list(grouped.values())
+    demographic_columns = [
+        column for group in groups if is_demographic(group["test"])
+        for column in group["columns"]
+    ]
+    groups = [group for group in groups if not is_demographic(group["test"])]
+    groups[:0] = [
+        {"test": "Demographics", "columns": demographic_columns},
+        {
+            "test": "Location",
+            "columns": [
+                {"key": "location_district", "label": "District"},
+                {"key": "location_subdistrict", "label": "Subdistrict"},
+            ],
+        },
+        get_occupation_columns(),
+    ]
 
     # Load column definitions for total and subscale scores.
     scoring_rules = db.scalars(
@@ -457,6 +476,7 @@ def get_participants_table(db: Session = Depends(get_db)):
         row = {"subject_id": participant.subject_id}
         for col in fixed_columns:
             row[col["key"]] = "No" if col["key"].startswith("answered_") else ""
+        row["gave_hair"] = participant.gave_hair or ""
         row["questionnaire_1_war"] = "Not answered"
         row["questionnaire_2_war"] = "Not answered"
         for group in groups:
@@ -609,6 +629,27 @@ def get_participants_table(db: Session = Depends(get_db)):
             if answer.value_numeric is not None and label and label.strip():
                 answer_labels.setdefault(str(row["subject_id"]), {})[key] = label
 
+    locality_key = next(
+        (f"canonical_{q.canonical_id}" for q in question_by_id.values()
+         if q.code == "DEMOG_HEALTH_12"), None
+    )
+    locations = get_location_values(db, {
+        row["subject_id"]: row.get(locality_key) for row in rows
+    })
+    for row in rows:
+        location = locations[row["subject_id"]]
+        row["location_is_approximate"] = location.get("is_approximate", False)
+        row["location_matched_name"] = location.get("matched_locality", "")
+        for field in ("district", "subdistrict"):
+            key = f"location_{field}"
+            row[key] = location[f"{field}_code"]
+            if row[key] != "Unknown":
+                answer_labels.setdefault(str(row["subject_id"]), {})[key] = (
+                    location[f"{field}_he"]
+                )
+
+    occupation_comparisons = add_occupation_values(db, rows, questions, answer_labels)
+
     score_interpretations = {}
     stored_scores = {
         (score.subject_id, score.rule_id): score.score
@@ -643,5 +684,6 @@ def get_participants_table(db: Session = Depends(get_db)):
         "groups": groups,
         "rows": rows,
         "answer_labels": answer_labels,
+        "occupation_comparisons": occupation_comparisons,
         "score_interpretations": score_interpretations,
     }
